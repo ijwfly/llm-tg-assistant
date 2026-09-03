@@ -40,9 +40,36 @@ async def test_sessions_card_lists_the_whole_machine_own_folder_first(app, spy, 
     assert lines[2] == "▸ . · aaaaaaaa · 10 мин назад · «Починить auth»"
     assert lines[3] == "▸ other · bbbbbbbb · только что · «в другом проекте»"
     assert lines[4] == f"ещё 1 вне {settings.WORK_ROOT} — бот туда не ходит"
-    assert buttons(card) == [f"rs:1:{str(topic['session_id'])[:8]}", "rs:1:aaaaaaaa", "ns:1:bbbbbbbb"]
+    assert buttons(card) == [f"rs:1:{str(topic['session_id'])[:8]}", "rs:1:aaaaaaaa", "ns:1:bbbbbbbb", "hide:1"]
     assert button_texts(card) == [f"Продолжить здесь {str(topic['session_id'])[:8]}", "Продолжить здесь aaaaaaaa",
-                                  "Новая тема bbbbbbbb"]
+                                  "Новая тема bbbbbbbb", "Скрыть"]
+
+
+async def test_sessions_card_pages_through_the_machine(app, spy, fake_claude, tmp_path):
+    await run(app, text_update("/status"))
+    topic = (await app.topics.list_all())[0]
+    size = settings.SESSIONS_PAGE_SIZE
+    now = time.time()
+    other = tmp_path / "work" / "other"
+    other.mkdir()
+    for i in range(size + 2):                 # newest first: s00 is the newest, s09 the oldest
+        write_transcript(settings.CLAUDE_CONFIG_DIR, str(other), f"{i:02d}aaaaaa-1111-4111-8111-111111111111",
+                         [f"задача {i}"], mtime=now - i * 60)
+    await run(app, callback_update("sessions:1"))
+    card = spy.calls("SendMessage")[-1]
+    lines = card["text"].splitlines()
+    assert lines[0] == f"Сессии Claude Code в {settings.WORK_ROOT} · стр. 1/2:"
+    assert len(lines) == size + 1 and "«задача 0»" in lines[1] and f"«задача {size - 1}»" in lines[-1]
+    assert buttons(card)[-2:] == ["sp:1:1", "hide:1"] and button_texts(card)[-2] == "Дальше"
+    await run(app, callback_update("sp:1:1", message_id=777))
+    edit = spy.calls("EditMessageText")[-1]
+    assert edit["message_id"] == 777
+    lines = edit["text"].splitlines()
+    assert lines[0] == f"Сессии Claude Code в {settings.WORK_ROOT} · стр. 2/2:"
+    assert [l.split("«")[1] for l in lines[1:]] == [f"задача {size}»", f"задача {size + 1}»"]
+    assert buttons(edit)[-2:] == ["sp:1:0", "hide:1"] and button_texts(edit)[-2] == "Назад"
+    await run(app, callback_update("sp:1:0", message_id=777))
+    assert spy.calls("EditMessageText")[-1]["text"].splitlines()[0].endswith("стр. 1/2:")
 
 
 async def test_new_topic_button_creates_a_topic_bound_to_the_sessions_folder(app, spy, fake_claude, tmp_path):

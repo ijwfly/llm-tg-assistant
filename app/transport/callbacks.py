@@ -106,6 +106,9 @@ async def on_callback(cq: CallbackQuery, app) -> None:
             toast = await actions.delete_topic(app, topic)
         elif action == "sessions":
             toast = await actions.sessions_card(app, topic) and ""
+        elif action == "sp":
+            page = int(arg) if (arg or "").isdigit() else 0
+            toast = (await actions.sessions_card(app, topic, page, cq.message.message_id) and "") if cq.message else texts.TOAST_STALE
         elif action == "branch":
             toast = await actions.branch(app, topic)
         elif action == "rs":

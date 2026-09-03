@@ -187,12 +187,14 @@ def go_list(projects: dict[str, str]) -> str:
     return "Куда идём:\n" + "\n".join(f"/go {alias} — {path}" for alias, path in projects.items())
 
 
-def sessions_card(root: str, rows: list[tuple[str, str, str, str, str]], outside: int = 0) -> str:
-    """rows: (folder relative to root, short id, ago, title, where)."""
+def sessions_card(root: str, rows: list[tuple[str, str, str, str, str]], outside: int = 0,
+                  page: int = 0, pages: int = 1) -> str:
+    """rows: (folder relative to root, short id, ago, title, where); page/pages for the header."""
     if not rows:
         text = SESSIONS_EMPTY.format(root=root)
     else:
-        lines = [f"Сессии Claude Code в {root}:"]
+        header = f"Сессии Claude Code в {root}" + (f" · стр. {page + 1}/{pages}" if pages > 1 else "")
+        lines = [header + ":"]
         for folder, short, when, title, where in rows:
             line = f"▸ {folder} · {short} · {when} · «{title[:60]}»"
             lines.append(line + (f" · {where}" if where else ""))

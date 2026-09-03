@@ -32,10 +32,10 @@ Human-facing setup and operations: `README.md`.
 | `app/core/topics.py` | `TopicRef`, `TopicService` |
 | `app/core/runtime.py` | `TopicRuntime` (queue, worker task, claude process, idle timer, turn loop, verdicts), `RuntimeRegistry` |
 | `app/bridge/cli.py`, `process.py`, `events.py` | argv/env builder (permission-mode map, prompt tool + inline `--mcp-config`, secret stripping), `ClaudeProcess` (spawn, stdin, events, SIGINT, graceful stop), typed stream-json events |
-| `app/bridge/sessions.py` | read-only index of Claude Code transcripts (`projects/<sanitized cwd>/<id>.jsonl`): titles, machine-wide listing inside `WORK_ROOT`, lookup by id/prefix/name |
+| `app/bridge/sessions.py` | read-only index of Claude Code transcripts (`projects/<sanitized cwd>/<id>.jsonl`): titles, machine-wide listing inside `WORK_ROOT` (offset/limit pages), lookup by id/prefix/name |
 | `app/bridge/mcp_server.py`, `socket_server.py`, `rules.py` | stdlib-only stdio MCP server (`approve`) launched by `claude`, forwards to the daemon's unix socket (`BRIDGE_SOCKET`); `BridgeSocket` server; «Всегда» rule matrix, `updatedPermissions`, forgetting rules in `.claude/settings.local.json` |
 | `app/core/prompts.py` | `PromptService`: pending permission/question/plan prompts, cards, buttons, awaited text, timeouts, abandon on cancel; token → runtime registry |
-| `app/render/markdown.py`, `progress.py`, `keyboards.py`, `cards.py`, `tts.py` | fence-aware splitter and preview rules; progress line, tool trail, draft/progress content; inline keyboards and `callback_data` codec (topic card with switches and the «Ещё» page); permission (diff/masking), question and plan cards; prose extraction for TTS |
+| `app/render/markdown.py`, `progress.py`, `keyboards.py`, `cards.py`, `tts.py` | fence-aware splitter and preview rules; progress line, tool trail, draft/progress content; inline keyboards and `callback_data` codec (topic card with switches and the «Ещё» page, paged sessions list `sp:<topic>:<page>`); permission (diff/masking), question and plan cards; prose extraction for TTS |
 | `bridge_preamble.md` | system-prompt preamble (Telegram context); glued with the persona (`SOUL_PATH` / `/soul`) into one `--append-system-prompt-file` per topic by `bridge/cli.py` |
 | `app/core/prefs.py`, `voice.py` | per-topic / per-user switches with defaults from `settings` (cycles for perm/model/effort); voice answer via `TTS_CMD` after the turn |
 | `app/core/liveview.py` | `LiveView`: draft (private) or progress message (groups), trailing-edge gate, 429, keepalive, delete after finals |

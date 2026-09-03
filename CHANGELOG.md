@@ -5,6 +5,13 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- **Paged sessions card.** The «Sessions» list shows `SESSIONS_PAGE_SIZE` (8) rows per page with
+  «Назад» / «Дальше» buttons that redraw the card in place, a page counter in the header and a
+  «Скрыть» button; before, the list was cut at 12 rows with no way to see the rest. See
+  `specs/PROJECT_SPEC.md` §4.3.1.
+
 ### Changed
 
 - **Compose mirrors host paths.** `WORK_ROOT` and `CLAUDE_HOME` are mounted into the `bot` container at

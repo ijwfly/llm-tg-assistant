@@ -236,19 +236,29 @@ def _folder_label(cwd: str | None, root: str) -> str:
     return "." if rel == "." else rel
 
 
-async def sessions_card(app, topic: dict) -> str:
-    """Every session of the machine inside WORK_ROOT (PROJECT_SPEC 4.3.1): the topic's own folder first."""
+async def sessions_card(app, topic: dict, page: int = 0, message_id: int | None = None) -> str:
+    """Every session of the machine inside WORK_ROOT (PROJECT_SPEC 4.3.1): the topic's own folder first,
+    `SESSIONS_PAGE_SIZE` rows per page. With `message_id` the existing card is edited in place («Назад»/«Дальше»)."""
     root = settings.WORK_ROOT
-    found, outside = sessions.machine_sessions(root, first_cwd=topic["cwd"])
+    size = max(1, settings.SESSIONS_PAGE_SIZE)
+    page = max(0, page)
+    found, total, outside = sessions.machine_sessions(root, limit=size, first_cwd=topic["cwd"], offset=page * size)
+    pages = max(1, -(-total // size))
+    if not found and page > 0:                       # the list shrank under the user: last page instead
+        page = pages - 1
+        found, total, outside = sessions.machine_sessions(root, limit=size, first_cwd=topic["cwd"], offset=page * size)
     rows, entries = [], []
     topic_dir = Path(topic["cwd"]).resolve()
     for s in found:
         same = Path(s.cwd or "").resolve() == topic_dir
         rows.append((_folder_label(s.cwd, root), s.short, sessions.ago(s.mtime), s.title, await _where(app, topic, s.session_id)))
         entries.append((s.session_id, same))
-    text = texts.sessions_card(root, rows, outside)
-    kb = sessions_kb(topic["id"], entries) if entries else None
-    await send_to_topic(app, topic, text, reply_markup=kb, role="card")
+    text = texts.sessions_card(root, rows, outside, page, pages)
+    kb = sessions_kb(topic["id"], entries, page, pages) if entries else None
+    if message_id is not None:
+        await app.sender.edit_text(topic["chat_id"], topic["thread_id"], message_id, text, reply_markup=kb, topic_id=topic["id"])
+    else:
+        await send_to_topic(app, topic, text, reply_markup=kb, role="card")
     return text
 
 
