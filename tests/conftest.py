@@ -29,6 +29,10 @@ settings.TYPING_INTERVAL = 0.2
 settings.PROCESS_STOP_GRACE_SECS = 2.0
 settings.CLAUDE_BIN = str(ROOT / "tests" / "fake_claude" / "claude")
 settings.CLAUDE_CONFIG_DIR = None
+settings.DRAFT_MIN_INTERVAL = 0.05
+settings.EDIT_MIN_INTERVAL = 0.05
+settings.DRAFT_KEEPALIVE = 0.3
+settings.PROGRESS_DELAY = 0.0
 
 from aiogram import Bot  # noqa: E402
 
@@ -72,6 +76,7 @@ def fake_claude(tmp_path) -> FakeClaude:
     settings.CLAUDE_ENV = fake.env
     settings.WORK_ROOT = str(work)
     settings.DEFAULT_CWD = str(work)
+    settings.INBOX_DIR = str(tmp_path / "inbox")
     return fake
 
 

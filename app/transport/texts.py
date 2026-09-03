@@ -4,12 +4,11 @@ from app.render.markdown import format_duration
 HELP = (
     "Я управляю сессиями Claude Code на сервере. Каждая тема — своя сессия.\n\n"
     "Просто пиши — это ход Claude Code. Reply на сообщение цитирует его.\n\n"
+    "/status — карточка темы с кнопками: новый контекст, стоп, прервать\n"
     "/new — новый контекст (старая сессия остаётся на диске)\n"
-    "/cancel — прервать текущий ход\n"
-    "/retry — повторить последний ход\n"
-    "/stop — погасить процесс, контекст сохранить\n"
+    "/cancel, /retry, /stop — прервать, повторить, погасить процесс\n"
     "/cd <путь>, /go [алиас] — сменить директорию (контекст заново)\n"
-    "/status — состояние темы\n"
+    "/perm [режим] — права темы\n"
     "/topics — список тем\n"
     "/whoami — твой id, чат и тема\n"
     "/help — эта справка\n\n"
@@ -44,6 +43,25 @@ TURN_TIMEOUT = "⏱ Ход шёл дольше лимита и был прерв
 DAEMON_STOPPED = "⏹ Демон остановлен посреди хода. Контекст цел — /retry повторит."
 COMPACTED = "🧹 Контекст сжат: было {pre_tokens} токенов."
 TURN_INTERNAL_ERROR = "💥 Внутренняя ошибка моста при обработке хода. Подробности в логе; /retry повторит."
+ANSWER_IN_FILE = "Ответ целиком — в файле."
+
+PERM_SET = "🔐 Права: {mode}. Процесс перезапустится на следующем ходе, контекст остаётся."
+PERM_UNKNOWN = "Не знаю режим {mode}. Варианты: prompt, acceptEdits, plan, auto, dontAsk" + ", bypass (если разрешён)."
+
+TOAST_NEW = "Новый контекст"
+TOAST_STOPPED = "Процесс остановлен"
+TOAST_CANCELLING = "Прерываю…"
+TOAST_QUEUED = "В очереди"
+TOAST_SENT = "Отправлено"
+TOAST_REFRESHED = "Обновлено"
+TOAST_STALE = "Уже неактуально"
+TOAST_FAILED = "Не получилось, смотри лог"
+
+
+def perm_info(mode: str | None) -> str:
+    modes = ["prompt", "acceptEdits", "plan", "auto", "dontAsk", "bypass"]
+    rows = [f"{'← ' if m == (mode or 'prompt') else '   '}{m}" for m in modes]
+    return "Права темы:\n" + "\n".join(rows) + "\n\n/perm <режим> — сменить; /perm default — из конфига."
 
 
 def crash(code: int | None, stderr_tail: str) -> str:

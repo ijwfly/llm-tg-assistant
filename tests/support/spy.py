@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from tests.support.session import RecordingSession
 
-TEXT_METHODS = {"SendMessage", "SendRichMessage", "EditMessageText"}
+TEXT_METHODS = {"SendMessage", "SendRichMessage", "EditMessageText", "SendDocument", "SendPhoto"}
 
 
 class TelegramSpy:
@@ -17,6 +17,8 @@ class TelegramSpy:
     def _text_of(payload: dict) -> str | None:
         if payload.get("text"):
             return payload["text"]
+        if payload.get("caption"):
+            return payload["caption"]
         rich = payload.get("rich_message") or {}
         return rich.get("markdown") or rich.get("html")
 

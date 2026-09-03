@@ -20,6 +20,26 @@ def result(*, subtype: str = "success", is_error: bool = False, text: str | None
             "usage": {"input_tokens": 10, "output_tokens": 20}, "permission_denials": denials or []}
 
 
+def text_delta(text: str) -> dict:
+    return {"type": "stream_event", "session_id": "{session_id}",
+            "event": {"type": "content_block_delta", "index": 0, "delta": {"type": "text_delta", "text": text}}}
+
+
+def thinking_delta(text: str) -> dict:
+    return {"type": "stream_event", "session_id": "{session_id}",
+            "event": {"type": "content_block_delta", "index": 0, "delta": {"type": "thinking_delta", "thinking": text}}}
+
+
+def tool_use(name: str, tool_input: dict, tool_id: str = "toolu_1", parent: str | None = None) -> dict:
+    return {"type": "assistant", "session_id": "{session_id}", "parent_tool_use_id": parent,
+            "message": {"role": "assistant", "content": [{"type": "tool_use", "id": tool_id, "name": name, "input": tool_input}]}}
+
+
+def tool_result(tool_id: str = "toolu_1", content: str = "ok") -> dict:
+    return {"type": "user", "session_id": "{session_id}",
+            "message": {"role": "user", "content": [{"type": "tool_result", "tool_use_id": tool_id, "content": content}]}}
+
+
 def compact_boundary(pre_tokens: int = 1842) -> dict:
     return {"type": "system", "subtype": "compact_boundary", "session_id": "{session_id}",
             "compact_metadata": {"pre_tokens": pre_tokens, "trigger": "manual"}}

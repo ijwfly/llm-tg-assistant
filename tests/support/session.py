@@ -32,7 +32,8 @@ class RecordingSession(BaseSession):
 
     async def make_request(self, bot: Bot, method: TelegramMethod, timeout: int | None = None):
         name = type(method).__name__
-        payload = method.model_dump(exclude_none=True, exclude_defaults=True, mode="json")
+        payload = method.model_dump(exclude_none=True, exclude_defaults=True, mode="json",
+                                    fallback=lambda v: getattr(v, "path", repr(v)))
         queue = self._fail.get(name)
         if queue:
             self.failed_calls.append((name, payload))

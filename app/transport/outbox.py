@@ -9,7 +9,7 @@ import aiogram.methods
 from aiogram import Bot
 from aiogram.exceptions import TelegramBadRequest, TelegramRetryAfter
 from aiogram.methods import SendMessage
-from aiogram.types import Message
+from aiogram.types import FSInputFile, Message
 
 import settings
 from app.render.markdown import PLAIN_LIMIT, split_text
@@ -75,7 +75,12 @@ class OutboxWorker:
 
     async def _send(self, row: OutboxRow) -> int | None:
         method_cls = getattr(aiogram.methods, row.method)
-        method = method_cls.model_validate(row.payload)
+        payload = dict(row.payload)
+        for key in ("document", "photo", "voice", "audio", "video"):
+            value = payload.get(key)
+            if isinstance(value, str) and value.startswith("file://"):
+                payload[key] = FSInputFile(value[len("file://"):])
+        method = method_cls.model_validate(payload)
         try:
             result = await self.bot(method)
         except TelegramBadRequest as e:

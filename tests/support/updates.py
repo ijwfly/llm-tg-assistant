@@ -4,7 +4,7 @@ from __future__ import annotations
 import itertools
 from datetime import datetime, timezone
 
-from aiogram.types import CallbackQuery, Chat, ForumTopicCreated, Message, Update, User
+from aiogram.types import CallbackQuery, Chat, ForumTopicCreated, Message, MessageGenerationStopped, Update, User
 
 _update_ids = itertools.count(1)
 _message_ids = itertools.count(1)
@@ -49,3 +49,8 @@ def callback_update(data: str, *, user_id: int = 1, chat_id: int = 1, chat_type:
                   from_user=User(id=0, is_bot=True, first_name="bot"), text="card")
     cq = CallbackQuery(id=str(next(_update_ids)), from_user=user(user_id), chat_instance="ci", data=data, message=msg)
     return Update(update_id=update_id or next(_update_ids), callback_query=cq)
+
+
+def stopped_update(draft_id: int, *, chat_id: int = 1, thread_id: int | None = None, update_id: int | None = None) -> Update:
+    ev = MessageGenerationStopped(chat=chat(chat_id, "private"), draft_id=draft_id, message_thread_id=thread_id)
+    return Update(update_id=update_id or next(_update_ids), stopped_message_generation=ev)

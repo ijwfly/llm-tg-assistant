@@ -96,7 +96,7 @@ async def test_result_with_another_session_id_is_adopted(app, spy, fake_claude):
 
 
 async def test_daemon_stop_mid_turn_reports_and_kills_process(app, spy, fake_claude):
-    fake_claude.enqueue(fc.assistant_text("работаю"), {"delay": 5})
+    fake_claude.enqueue(fc.assistant_text("работаю " + "над длинной задачей, которую ты поставил, " * 4), {"delay": 5})
     await feed(app, text_update("долго"))
     await wait_for_text(spy, "работаю")
     topic = (await app.topics.list_all())[0]

@@ -1,4 +1,4 @@
-"""Per-topic runtime: the claude process, the turn queue and the turn loop."""
+"""Per-topic runtime: the claude process, the turn queue, the turn loop and the live view."""
 from __future__ import annotations
 
 import asyncio
@@ -6,11 +6,16 @@ import logging
 import time
 import uuid
 from dataclasses import dataclass, field
+from pathlib import Path
 
 import settings
 from app.bridge import events as ev
 from app.bridge.cli import build_argv, child_env
 from app.bridge.process import ClaudeProcess
+from app.core.liveview import LiveView
+from app.render import keyboards
+from app.render.markdown import RICH_LIMIT
+from app.render.progress import ProgressState, draft_markdown, progress_text
 from app.transport import texts
 
 log = logging.getLogger(__name__)
@@ -37,6 +42,14 @@ class TurnState:
     compact_pre_tokens: int | None = None
     result: ev.Result | None = None
     hint_sent: bool = False
+    pending: str = ""                   # finalized text not yet sent (short segments are merged)
+    stream_buf: str = ""                # text deltas of the block being generated
+    progress: ProgressState = field(default_factory=lambda: ProgressState(started=time.monotonic()))
+    live: LiveView | None = None
+
+    @property
+    def preview_text(self) -> str:
+        return self.pending + ("\n\n" if self.pending and self.stream_buf else "") + self.stream_buf
 
 
 class QueueFull(Exception):
@@ -49,6 +62,7 @@ class TopicRuntime:
         self.topic_id: int = topic["id"]
         self.chat_id: int = topic["chat_id"]
         self.thread_id: int | None = topic["thread_id"]
+        self.private: bool = topic["chat_id"] > 0
         self.key = f"{self.chat_id}:{self.thread_id or 0}"
         self.queue: asyncio.Queue[TurnRequest] = asyncio.Queue(maxsize=settings.TURN_QUEUE_MAX)
         self.proc: ClaudeProcess | None = None
@@ -95,7 +109,10 @@ class TopicRuntime:
         if state is not None:
             state.aborted = True
             await self.app.store.turns.finish(state.turn_id, status="aborted")
+            if state.live:
+                await state.live.finish()
             await self.app.sender.send_text(self.chat_id, self.thread_id, texts.DAEMON_STOPPED,
+                                            reply_markup=keyboards.retry_kb(self.topic_id),
                                             topic_id=self.topic_id, turn_id=state.turn_id, role="verdict")
         self._worker.cancel()
         if self._idle_task:
@@ -139,7 +156,10 @@ class TopicRuntime:
                 raise
             except Exception:
                 log.exception("topic %s: turn failed unexpectedly", self.topic_id)
+                if self.current and self.current.live:
+                    await self.current.live.finish()
                 await self.app.sender.send_text(self.chat_id, self.thread_id, texts.TURN_INTERNAL_ERROR,
+                                                reply_markup=keyboards.retry_kb(self.topic_id),
                                                 topic_id=self.topic_id, role="verdict")
             finally:
                 self.current = None
@@ -164,6 +184,20 @@ class TopicRuntime:
                 log.debug("typing failed: %r", e)
             await asyncio.sleep(settings.TYPING_INTERVAL)
 
+    def _make_live(self, state: TurnState) -> LiveView:
+        def render_draft() -> str:
+            return draft_markdown(state.progress.line(time.monotonic()), state.progress.last_thinking_line(),
+                                  state.preview_text, show_thinking=settings.THINKING_PREVIEW, frozen_limit=RICH_LIMIT,
+                                  streaming=bool(state.stream_buf))
+
+        def render_message() -> str:
+            return progress_text(state.progress.line(time.monotonic()), state.preview_text,
+                                 preview_chars=settings.PREVIEW_TAIL, show_preview=settings.STREAM_PREVIEW)
+
+        return LiveView(self.app, chat_id=self.chat_id, thread_id=self.thread_id, topic_id=self.topic_id,
+                        turn_id=state.turn_id, private=self.private,
+                        render_draft=render_draft, render_message=render_message)
+
     async def _run_turn(self, request: TurnRequest) -> None:
         store = self.app.store
         if self._idle_task:
@@ -171,8 +205,10 @@ class TopicRuntime:
         turn_id = request.turn_id or (await store.turns.create(self.topic_id, request.content))["id"]
         await store.turns.set_running(turn_id)
         state = TurnState(turn_id=turn_id, request=request)
+        state.live = self._make_live(state)
         self.current = state
         typing = asyncio.create_task(self._typing(), name=f"typing-{turn_id}")
+        state.live.start()
         try:
             for attempt in (1, 2):
                 topic = await store.topics.get_by_id(self.topic_id)
@@ -196,6 +232,8 @@ class TopicRuntime:
             await self._finish(state)
         finally:
             typing.cancel()
+            if state.live:
+                await state.live.finish()
 
     async def _consume(self, proc: ClaudeProcess, state: TurnState, topic: dict) -> None:
         try:
@@ -224,11 +262,23 @@ class TopicRuntime:
                     log.info("topic %s: session id changed %s -> %s", self.topic_id, topic["session_id"], e.session_id)
                     await self.app.store.topics.update(self.topic_id, session_id=uuid.UUID(e.session_id))
                     topic["session_id"] = e.session_id
+            elif isinstance(e, ev.TextDelta):
+                state.stream_buf += e.text
+                state.live.touch()
+            elif isinstance(e, ev.ThinkingDelta):
+                state.progress.add_thinking(e.text)
+                state.live.touch()
             elif isinstance(e, ev.TextBlock):
+                state.stream_buf = ""
                 if e.parent_tool_use_id is None and e.text.strip():
-                    state.texts_sent += 1
-                    await self.app.sender.send_markdown(self.chat_id, self.thread_id, e.text,
-                                                        topic_id=self.topic_id, turn_id=state.turn_id, role="assistant")
+                    state.pending = (state.pending + "\n\n" + e.text) if state.pending else e.text
+                    if len(state.pending) >= settings.MIN_SEGMENT_CHARS:
+                        await self._flush_text(state)
+                    else:
+                        state.live.touch()
+            elif isinstance(e, ev.ToolUse):
+                state.progress.add_tool(e.name, e.input, subagent=e.parent_tool_use_id is not None)
+                state.live.touch()
             elif isinstance(e, ev.PermissionDenied):
                 state.denials.append(e.tool_name)
             elif isinstance(e, ev.CompactBoundary):
@@ -240,23 +290,50 @@ class TopicRuntime:
                     await self.app.store.topics.update(self.topic_id, session_id=uuid.UUID(e.session_id))
                     topic["session_id"] = e.session_id
 
+    async def _flush_text(self, state: TurnState) -> None:
+        text, state.pending = state.pending, ""
+        if not text.strip():
+            return
+        state.texts_sent += 1
+        sender = self.app.sender
+        if len(text) > settings.ANSWER_FILE_THRESHOLD:
+            out_dir = Path(settings.INBOX_DIR) / "out"
+            out_dir.mkdir(parents=True, exist_ok=True)
+            path = out_dir / f"answer-{state.turn_id}.md"
+            path.write_text(text)
+            await sender.send_markdown(self.chat_id, self.thread_id, text[:2000] + "\n\n…",
+                                       topic_id=self.topic_id, turn_id=state.turn_id, role="assistant")
+            await sender.send_document(self.chat_id, self.thread_id, str(path), caption=texts.ANSWER_IN_FILE,
+                                       topic_id=self.topic_id, turn_id=state.turn_id, role="assistant")
+            return
+        await sender.send_markdown(self.chat_id, self.thread_id, text,
+                                   topic_id=self.topic_id, turn_id=state.turn_id, role="assistant")
+
     async def _finish(self, state: TurnState) -> None:
         store, sender = self.app.store, self.app.sender
         r = state.result
-        send = lambda text: sender.send_text(self.chat_id, self.thread_id, text,  # noqa: E731
-                                             topic_id=self.topic_id, turn_id=state.turn_id, role="verdict")
+        tid = self.topic_id
+
+        async def send(text: str, kb=None) -> None:
+            await sender.send_text(self.chat_id, self.thread_id, text, reply_markup=kb,
+                                   topic_id=tid, turn_id=state.turn_id, role="verdict")
+
         if state.aborted:
             return
         if state.cancelled or state.timed_out:
+            if state.pending.strip():
+                state.pending += "\n\n_(прервано)_"
+                await self._flush_text(state)
             if state.got_init:  # the CLI wrote the transcript, so the session can be resumed
-                await store.topics.update(self.topic_id, session_resumable=True)
+                await store.topics.update(tid, session_resumable=True)
             status = "cancelled" if state.cancelled else "timeout"
             await store.turns.finish(state.turn_id, status=status, result_subtype=r.subtype if r else None)
             await self._drop_dead_process()
-            await send(texts.CANCELLED if state.cancelled else texts.TURN_TIMEOUT)
+            await send(texts.CANCELLED if state.cancelled else texts.TURN_TIMEOUT, keyboards.retry_kb(tid))
             return
         assert r is not None
-        await store.topics.update(self.topic_id, session_resumable=True)
+        await self._flush_text(state)
+        await store.topics.update(tid, session_resumable=True)
         status = "error" if r.is_error else "done"
         await store.turns.finish(state.turn_id, status=status, result_subtype=r.subtype, duration_ms=r.duration_ms,
                                  num_turns=r.num_turns, cost_usd=r.total_cost_usd, usage=r.usage,
@@ -264,15 +341,16 @@ class TopicRuntime:
         self.last_turn = {"duration_ms": r.duration_ms, "cost_usd": r.total_cost_usd, "num_turns": r.num_turns,
                           "usage": r.usage}
         if r.subtype in ("error_max_turns", "error_max_budget_usd"):
-            await send(texts.TURN_LIMIT.format(what="ходов" if "turns" in r.subtype else "бюджета"))
+            await send(texts.TURN_LIMIT.format(what="ходов" if "turns" in r.subtype else "бюджета"),
+                       keyboards.continue_kb(tid))
         elif r.is_error:
-            await send(texts.TURN_ERROR.format(error=(r.result or r.subtype)[:1500]))
+            await send(texts.TURN_ERROR.format(error=(r.result or r.subtype)[:1500]), keyboards.retry_kb(tid))
         elif state.compacted and state.texts_sent == 0:
             await send(texts.COMPACTED.format(pre_tokens=state.compact_pre_tokens or "?"))
         elif state.texts_sent == 0:
             await send(texts.TURN_NO_TEXT)
         if state.denials:
-            await send(texts.DENIED.format(tools=", ".join(dict.fromkeys(state.denials))))
+            await send(texts.DENIED.format(tools=", ".join(dict.fromkeys(state.denials))), keyboards.denied_kb(tid))
         if settings.SHOW_TURN_STATS:
             await send(texts.turn_stats(r.duration_ms, r.total_cost_usd, r.num_turns))
 
@@ -287,6 +365,7 @@ class TopicRuntime:
         await self.app.store.turns.finish(state.turn_id, status="crashed", error="\n".join(stderr_tail)[:2000])
         tail = "\n".join(stderr_tail).strip()
         await self.app.sender.send_text(self.chat_id, self.thread_id, texts.crash(code, tail),
+                                        reply_markup=keyboards.retry_kb(self.topic_id),
                                         topic_id=self.topic_id, turn_id=state.turn_id, role="verdict")
 
 

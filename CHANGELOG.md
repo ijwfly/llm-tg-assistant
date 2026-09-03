@@ -23,6 +23,12 @@ All notable changes to this project are documented here. The format follows
   SIGINT, turn timeout, silent retry on crash, `/new`, `/clear`, `/stop`, `/cancel`, `/retry`,
   `/cd`, `/go`, extended `/status`, reply quoting, per-topic turn queue with a single hint.
   See `specs/PHASE_2_TURNS.md`.
+- **Live view and buttons (phase 3)** — rich drafts with `<tg-thinking>` (progress line, tool
+  trail, thinking tail, held-back last word) and native Stop in private chats; editable progress
+  message with `🛑` in groups; trailing-edge gate with 429 handling; fence-aware splitter; very
+  long answers as a file; short text segments merged; inline buttons on verdicts (`🔁`, `🔓`,
+  `▶️`), topic card `/status` with `🆕 ⏸ 🔄 ✖` and in-place redraw, shared actions for commands and
+  buttons, `/perm`, command menu reduced to `status`/`new`/`help`. See `specs/PHASE_3_STREAMING.md`.
 - **Test infrastructure** — `scripts/test.sh` with a disposable Postgres, recording Telegram
   session with failure injection, spy, update builders, fake `claude` for the coming phases.
   See `specs/E2E_TESTS.md`.

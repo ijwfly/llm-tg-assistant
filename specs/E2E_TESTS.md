@@ -1,6 +1,6 @@
 # E2E_TESTS — тестовая инфраструктура и покрытие
 
-Status: фаза 2 — инфраструктура, команды, outbox, ходы через fake `claude`; обновляется каждой фазой.
+Status: фаза 3 — инфраструктура, команды, outbox, ходы, стриминг и кнопки через fake `claude`; обновляется каждой фазой.
 
 ## Запуск
 
@@ -18,11 +18,11 @@ Status: фаза 2 — инфраструктура, команды, outbox, х�
 | Настройки | `tests/conftest.py` (верх файла) | Присваивает `settings.*` до импорта `app`: тестовый токен, `ALLOWED_USERS=[1]`, `DATABASE_URL` из `TEST_DATABASE_URL`, тайминги outbox ≈ 0.02 с. Autouse-фикстура `restore_settings` откатывает изменения после каждого теста. |
 | БД | `db` (session), `clean_db` (autouse) | Реальный Postgres с реальными миграциями; после каждого теста `TRUNCATE … RESTART IDENTITY CASCADE` в FK-безопасном порядке. |
 | Transport mock | `tests/support/session.py` `RecordingSession` | Подкласс `BaseSession` aiogram: пишет `(имя метода, payload)` в `calls`, возвращает объекты aiogram по `__returning__` (`Message` с растущим `message_id` от 1000, `User` для `getMe`, `True` для bool). `fail_next(method, exc)` — внедрить исключение в следующий вызов; такие вызовы попадают в `failed_calls`, а не в `calls`. |
-| Spy | `tests/support/spy.py` `TelegramSpy` | `sent_texts(chat_id)`, `last_text()`, `calls(method)`, `assert_shown_text_contains()`, `assert_nothing_sent()` — что увидел пользователь, без различий plain/rich/edit. |
-| Апдейты | `tests/support/updates.py` | `text_update(text, user_id, chat_id, chat_type, thread_id, is_topic, topic_name)`, `callback_update(data, …)` — настоящие `aiogram.types.Update`. |
+| Spy | `tests/support/spy.py` `TelegramSpy` | `sent_texts(chat_id)` (тексты, rich-markdown, правки, подписи документов), `last_text()`, `calls(method)`, `assert_shown_text_contains()`, `assert_nothing_sent()`. Drafts — через `calls("SendRichMessageDraft")`. |
+| Апдейты | `tests/support/updates.py` | `text_update(text, user_id, chat_id, chat_type, thread_id, is_topic, topic_name)`, `callback_update(data, message_id, …)`, `stopped_update(draft_id)` — настоящие `aiogram.types.Update`. |
 | Прогон | `tests/support/helpers.py` | `feed(app, update)` → `dp.feed_update` (реальные middleware и хендлеры); `wait_outbox_idle(app)` — ждёт, пока все due-строки outbox доставлены/провалены; `run()` = оба; `wait_for_text(spy, fragment)` — ждёт появления текста; `wait_turn_finished(app)` — ждёт конца последнего хода и возвращает строку `turns`. |
 | Приложение | фикстура `app` | `App(Bot(session=RecordingSession()), db)` со стартом outbox-воркера; `stop()` в teardown. |
-| fake `claude` | `tests/fake_claude/claude`, фикстура `fake_claude` (autouse) в `tests/support/fake_claude.py` | Исполняемый скрипт stream-json (см. `PHASE_1_SKELETON.md`). Фикстура даёт каждому тесту свою очередь сценариев и лог, подменяет `CLAUDE_BIN`, `CLAUDE_ENV`, `WORK_ROOT`/`DEFAULT_CWD` (в `tmp_path/work`). Хелперы: `enqueue(*events)`, `text_turn(text, **result)`, `argv_calls()`, `cwds()`, `stdin_texts()`, `signals()`; билдеры событий `assistant_text`, `result`, `compact_boundary`, `permission_denied`. Шаги сценария `{"delay": s}` и `{"exit": code, "stderr": …}` моделируют долгий ход и падение. |
+| fake `claude` | `tests/fake_claude/claude`, фикстура `fake_claude` (autouse) в `tests/support/fake_claude.py` | Исполняемый скрипт stream-json (см. `PHASE_1_SKELETON.md`). Фикстура даёт каждому тесту свою очередь сценариев и лог, подменяет `CLAUDE_BIN`, `CLAUDE_ENV`, `WORK_ROOT`/`DEFAULT_CWD` (в `tmp_path/work`). Хелперы: `enqueue(*events)`, `text_turn(text, **result)`, `argv_calls()`, `cwds()`, `stdin_texts()`, `signals()`; билдеры событий `assistant_text`, `result`, `text_delta`, `thinking_delta`, `tool_use`, `tool_result`, `compact_boundary`, `permission_denied`. Шаги сценария `{"delay": s}` и `{"exit": code, "stderr": …}` моделируют долгий ход и падение. |
 | Unit | `tests/unit/` | `conftest.py` переопределяет `db`/`clean_db` заглушками: БД не нужна. |
 
 ## Что покрывает каждый файл
@@ -36,10 +36,13 @@ Status: фаза 2 — инфраструктура, команды, outbox, х�
 | `e2e/test_turn_control.py` | `/cancel`, таймаут, падения, `/retry` | SIGINT → `🛑` и resume; отмена без хода; `⏱`; падение с незаметным повтором; двойное падение `💥` со stderr; `/retry` повторяет промпт |
 | `e2e/test_process_lifecycle.py` | процесс темы | простой → стоп → resume того же id; `/stop`; `/new`; `/cd` внутри/вне корня и несуществующая; `/go`; смена session id по `result`; остановка демона посреди хода → `⏹`, процесс убит, `turns.status=aborted`; `/status` с процессом и последним ходом |
 | `e2e/test_outbox.py` | `TelegramSender` → `outbox` → `OutboxWorker` → сессия | `delivered_message_id`; сетевая ошибка → повтор; 429 паркует только свою тему; порядок внутри темы при повторе; протухшая строка → `failed`; отвергнутый rich → plain fallback и `message_links` |
+| `e2e/test_streaming.py` | события → `LiveView` → drafts / сообщение-прогресс → outbox | draft с `<tg-thinking>`, следом, thinking и удержанным последним словом, `can_stop`; нативный Stop → `🛑` с кнопкой повтора; отвергнутый draft → сообщение-прогресс с `🛑`, удаление после ответа; группа: прогресс, правки, удаление после финала; кнопка `🛑` → отмена и тост; склейка короткого сегмента; 429 на draft не ломает ход; длинный ответ → файл |
+| `e2e/test_cards.py` | `/status` → карточка → callbacks → `actions` | кнопки карточки; `🛑` при идущем ходе; `🆕` перерисовывает карточку; `⏸`/`🔄`; `✖` удаляет; устаревшая кнопка → тост; `🔁` на вердикте; `🔓` → `acceptEdits` и новый argv; `▶️ Продолжить`; `/perm`; меню из 3 команд |
 | `e2e/test_dedup.py` | `DedupMiddleware` | один `update_id` дважды → один ответ |
 | `e2e/test_lifecycle.py` | `App.start/stop` | `NOTIFY_CHAT` получает 🌅 и ⏹ (с `message_thread_id`) |
 | `unit/test_fake_claude.py` | скрипт fake `claude` | init с `--session-id`, воспроизведение сценария, лог; пустая очередь → exit 3 |
-| `unit/test_markdown_split.py` | `render/markdown.py` | разрезка по строкам, длинная строка, пустой текст, формат длительности |
+| `unit/test_markdown_split.py` | `render/markdown.py` | разрезка по строкам, fence-aware разрез с переоткрытием языка, границы абзацев, таблица целиком, правила превью |
+| `unit/test_progress.py` | `render/progress.py` | детали инструментов и срезы, строка прогресса, след из трёх с подагентом, стабильная фраза, состояние ожидания, рендер draft/прогресса |
 
 ## Not yet covered
 
@@ -49,6 +52,7 @@ Status: фаза 2 — инфраструктура, команды, outbox, х�
 | `docker compose up` целиком | Проверяется `scripts/test_docker.sh` и smoke | средний |
 | Падение воркера outbox посреди доставки (демон убит между отправкой и `mark_delivered`) | Требует убийства процесса; поведение at-least-once описано в спеке | низкий |
 | Очистка `processed_updates` по возрасту | Нет периодической задачи в фазе 1 | низкий, фаза 9 |
-| `stopped_message_generation` → отмена | Drafts появляются в фазе 3; хендлер есть, билдера апдейта нет | фаза 3 |
 | Fallback `--resume` → `--session-id` при неудачном resume | Нужен fake-сценарий «выход до init»; ветка есть в `runtime._run_turn` | средний, фаза 6 |
 | Шаг `prompt_tool` fake `claude` | Используется с фазы 5 | фаза 5 |
+| Keepalive draft'а при долгом инструменте | Таймер есть (`DRAFT_KEEPALIVE`), тест на повторную отправку без изменений не написан | низкий |
+| Потеря сообщения-прогресса (удалено пользователем) → пересоздание | Ветка в `LiveView._send_latest` | низкий |

@@ -6,12 +6,14 @@ from pathlib import Path
 
 from aiogram import F, Router
 from aiogram.filters import Command, CommandObject
-from aiogram.types import Message, MessageGenerationStopped
+from aiogram.types import CallbackQuery, Message, MessageGenerationStopped
 
 import settings
-from app.core.runtime import QueueFull, TurnRequest
+from app.core import actions
+from app.core.runtime import TurnRequest
 from app.core.topics import TopicRef
 from app.transport import texts
+from app.transport.callbacks import on_callback
 
 QUOTE_LIMIT = 700
 
@@ -85,38 +87,28 @@ async def cmd_topics(message: Message, app) -> None:
 
 async def cmd_status(message: Message, app) -> None:
     topic = await _topic(app, message)
-    rt = app.runtimes.peek(topic["id"])
-    await app.sender.send_text(topic["chat_id"], topic["thread_id"], texts.status(topic, rt.status() if rt else None),
-                               topic_id=topic["id"])
+    await actions.show_card(app, topic)
 
 
 async def cmd_new(message: Message, app) -> None:
-    topic = await _topic(app, message)
-    await app.runtimes.get(topic).restart_context()
-    await app.sender.send_text(topic["chat_id"], topic["thread_id"], texts.NEW_CONTEXT, topic_id=topic["id"])
+    await actions.new_context(app, await _topic(app, message))
 
 
 async def cmd_stop(message: Message, app) -> None:
-    topic = await _topic(app, message)
-    await app.runtimes.get(topic).stop_process()
-    await app.sender.send_text(topic["chat_id"], topic["thread_id"], texts.PROCESS_STOPPED, topic_id=topic["id"])
+    await actions.stop_process(app, await _topic(app, message))
 
 
 async def cmd_cancel(message: Message, app) -> None:
     ref = topic_ref(message)
     topic = await app.topics.get(ref)
-    rt = app.runtimes.peek(topic["id"]) if topic else None
-    if rt is None or not await rt.cancel():
+    if topic is None:
         await app.sender.send_text(ref.chat_id, ref.thread_id, texts.NOTHING_TO_CANCEL)
+        return
+    await actions.cancel_turn(app, topic)
 
 
 async def cmd_retry(message: Message, app) -> None:
-    topic = await _topic(app, message)
-    last = await app.store.turns.last_for_topic(topic["id"])
-    if last is None:
-        await app.sender.send_text(topic["chat_id"], topic["thread_id"], texts.NOTHING_TO_RETRY, topic_id=topic["id"])
-        return
-    await _submit(app, topic, TurnRequest(content=last["prompt"]))
+    await actions.retry_last(app, await _topic(app, message))
 
 
 def resolve_cwd(raw: str) -> tuple[str | None, str | None]:
@@ -133,16 +125,16 @@ def resolve_cwd(raw: str) -> tuple[str | None, str | None]:
 async def _change_dir(app, topic: dict, raw: str) -> None:
     path, error = resolve_cwd(raw)
     if error:
-        await app.sender.send_text(topic["chat_id"], topic["thread_id"], error, topic_id=topic["id"])
+        await actions.send_to_topic(app, topic, error)
         return
     await app.runtimes.get(topic).restart_context(cwd=path)
-    await app.sender.send_text(topic["chat_id"], topic["thread_id"], texts.CD_OK.format(path=path), topic_id=topic["id"])
+    await actions.send_to_topic(app, topic, texts.CD_OK.format(path=path))
 
 
 async def cmd_cd(message: Message, command: CommandObject, app) -> None:
     topic = await _topic(app, message)
     if not command.args:
-        await app.sender.send_text(topic["chat_id"], topic["thread_id"], texts.CD_USAGE, topic_id=topic["id"])
+        await actions.send_to_topic(app, topic, texts.CD_USAGE)
         return
     await _change_dir(app, topic, command.args)
 
@@ -151,29 +143,28 @@ async def cmd_go(message: Message, command: CommandObject, app) -> None:
     topic = await _topic(app, message)
     alias = (command.args or "").strip()
     if not alias:
-        text = texts.go_list(settings.PROJECTS) if settings.PROJECTS else texts.GO_EMPTY
-        await app.sender.send_text(topic["chat_id"], topic["thread_id"], text, topic_id=topic["id"])
+        await actions.send_to_topic(app, topic, texts.go_list(settings.PROJECTS) if settings.PROJECTS else texts.GO_EMPTY)
         return
     if alias not in settings.PROJECTS:
-        await app.sender.send_text(topic["chat_id"], topic["thread_id"], texts.GO_UNKNOWN.format(alias=alias),
-                                   topic_id=topic["id"])
+        await actions.send_to_topic(app, topic, texts.GO_UNKNOWN.format(alias=alias))
         return
     await _change_dir(app, topic, settings.PROJECTS[alias])
 
 
-# ------------------------------------------------------------------ turns
-
-async def _submit(app, topic: dict, request: TurnRequest) -> None:
-    rt = app.runtimes.get(topic)
-    try:
-        busy = await rt.submit(request)
-    except QueueFull:
-        await app.sender.send_text(topic["chat_id"], topic["thread_id"], texts.QUEUE_FULL, topic_id=topic["id"])
+async def cmd_perm(message: Message, command: CommandObject, app) -> None:
+    topic = await _topic(app, message)
+    mode = (command.args or "").strip()
+    if not mode:
+        await actions.send_to_topic(app, topic, texts.perm_info(topic["permission_mode"]))
         return
-    if busy and rt.current is not None and not rt.current.hint_sent:
-        rt.current.hint_sent = True
-        await app.sender.send_text(topic["chat_id"], topic["thread_id"], texts.QUEUE_HINT, topic_id=topic["id"])
+    if mode == "default":
+        mode = settings.DEFAULT_PERMISSION_MODE
+    toast = await actions.set_permission_mode(app, topic, mode)
+    if toast.startswith("Не знаю"):
+        await actions.send_to_topic(app, topic, toast)
 
+
+# ------------------------------------------------------------------ turns
 
 async def any_message(message: Message, app) -> None:
     text = build_turn_text(message, app.bot.id)
@@ -181,7 +172,7 @@ async def any_message(message: Message, app) -> None:
         return
     topic = await _topic(app, message)
     await app.store.links.link(message.chat.id, message.message_id, topic["id"], "user")
-    await _submit(app, topic, TurnRequest(content=[{"type": "text", "text": text}]))
+    await actions.submit_turn(app, topic, TurnRequest(content=[{"type": "text", "text": text}]))
 
 
 async def on_generation_stopped(event: MessageGenerationStopped, app) -> None:
@@ -189,6 +180,10 @@ async def on_generation_stopped(event: MessageGenerationStopped, app) -> None:
     rt = app.runtimes.peek(topic["id"]) if topic else None
     if rt is not None:
         await rt.cancel()
+
+
+async def on_callback_query(cq: CallbackQuery, app) -> None:
+    await on_callback(cq, app)
 
 
 def build_router() -> Router:
@@ -204,6 +199,8 @@ def build_router() -> Router:
     router.message.register(cmd_retry, Command("retry"))
     router.message.register(cmd_cd, Command("cd"))
     router.message.register(cmd_go, Command("go"))
+    router.message.register(cmd_perm, Command("perm"))
     router.message.register(any_message, F.text | F.caption)
     router.stopped_message_generation.register(on_generation_stopped)
+    router.callback_query.register(on_callback_query)
     return router

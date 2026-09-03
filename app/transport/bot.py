@@ -11,16 +11,8 @@ from app.transport.middleware import AccessMiddleware, DedupMiddleware
 ALLOWED_UPDATES = ["message", "edited_message", "callback_query", "stopped_message_generation", "my_chat_member"]
 
 BOT_COMMANDS = [
+    BotCommand(command="status", description="Карточка темы"),
     BotCommand(command="new", description="Новый контекст"),
-    BotCommand(command="status", description="Состояние темы"),
-    BotCommand(command="cancel", description="Прервать текущий ход"),
-    BotCommand(command="retry", description="Повторить последний ход"),
-    BotCommand(command="go", description="Сменить проект по алиасу"),
-    BotCommand(command="cd", description="Сменить директорию"),
-    BotCommand(command="compact", description="Сжать контекст (Claude Code)"),
-    BotCommand(command="stop", description="Погасить процесс, контекст сохранить"),
-    BotCommand(command="topics", description="Список тем"),
-    BotCommand(command="whoami", description="Мой id, чат и тема"),
     BotCommand(command="help", description="Справка"),
 ]
 

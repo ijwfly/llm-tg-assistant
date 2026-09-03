@@ -46,6 +46,19 @@ PROCESS_STOP_GRACE_SECS: float = 10.0
 TYPING_INTERVAL: float = 4.0         # sendChatAction cadence while a turn runs
 SHOW_TURN_STATS: bool = False        # italic "1 м 12 с · $0.08 · 3 шага" under the answer
 
+# --- Live view / rendering ----------------------------------------------------------
+USE_DRAFTS: bool = True              # rich drafts with <tg-thinking> in private chats
+STREAM_PREVIEW: bool = True          # text tail in the progress message (groups)
+THINKING_PREVIEW: bool = True        # last thinking line inside the draft
+DRAFT_MIN_INTERVAL: float = 1.0      # trailing-edge gate for draft updates
+EDIT_MIN_INTERVAL: float = 3.0       # gate for progress-message edits (edits share the chat rate limit)
+DRAFT_KEEPALIVE: float = 20.0        # drafts live ~30 s: resend during long tool calls
+PROGRESS_DELAY: float = 1.5          # show the progress message only if the turn takes longer
+PREVIEW_TAIL: int = 600              # chars of text tail in the progress message
+MIN_SEGMENT_CHARS: int = 120         # shorter text before a tool call is merged with the next segment
+ANSWER_FILE_THRESHOLD: int = 50_000  # longer answers go as a file
+INBOX_DIR: str = os.environ.get("INBOX_DIR", "/data/inbox")   # downloaded and generated files
+
 # --- Outbox / delivery ----------------------------------------------------------
 OUTBOX_POLL_INTERVAL: float = 0.5        # seconds between idle polls of the outbox
 OUTBOX_RETRY_BASE_SECS: float = 1.0      # backoff base for non-429 delivery errors

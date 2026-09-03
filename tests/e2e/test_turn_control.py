@@ -7,7 +7,7 @@ from tests.support.updates import text_update
 
 
 async def test_cancel_interrupts_the_turn_and_next_turn_resumes(app, spy, fake_claude):
-    fake_claude.enqueue(fc.assistant_text("начинаю"), {"delay": 5})
+    fake_claude.enqueue(fc.assistant_text("начинаю " + "разбирать код и читать спеки, " * 6), {"delay": 5})
     fake_claude.text_turn("после отмены")
     await feed(app, text_update("долгая задача"))
     await wait_for_text(spy, "начинаю")
