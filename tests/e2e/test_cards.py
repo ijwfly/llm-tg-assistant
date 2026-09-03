@@ -119,5 +119,13 @@ async def test_perm_command_shows_and_sets_mode(app, spy):
     assert "Не знаю режим bypass" in spy.last_text()
 
 
-def test_command_menu_is_short():
-    assert [c.command for c in BOT_COMMANDS] == ["status", "new", "help"]
+def test_command_menu_lists_every_bridge_command():
+    from app.transport.handlers import build_router
+    registered = set()
+    for handler in build_router().message.handlers:
+        for f in handler.filters or []:
+            registered |= {c if isinstance(c, str) else c.pattern for c in getattr(f.callback, "commands", ())}
+    menu = [c.command for c in BOT_COMMANDS]
+    assert len(menu) == len(set(menu))
+    assert set(menu) == registered - {"start", "clear"}     # aliases stay out of the menu
+    assert all(len(c.description) <= 256 for c in BOT_COMMANDS)

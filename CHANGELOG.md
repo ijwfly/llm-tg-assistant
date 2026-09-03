@@ -76,6 +76,8 @@ All notable changes to this project are documented here. The format follows
   answer's prose via `TTS_CMD`), `/usage` (month by topic and model), «Лимиты» line on `/status`
   from `rate_limit_event`. New settings: `MODEL_CHOICES`, `SOUL_PATH`, `BRIDGE_PREAMBLE_PATH`,
   `TTS_CMD`, `TTS_TIMEOUT`, `TTS_MAX_CHARS`. See `specs/PHASE_7_SETTINGS.md`.
+- **Command menu** — every bridge command is registered in the Telegram «/» menu with a
+  description and argument hint (was: `status`, `new`, `help` only).
 - **Test infrastructure** — `scripts/test.sh` with a disposable Postgres, recording Telegram
   session with failure injection, spy, update builders, fake `claude` for the coming phases.
   See `specs/E2E_TESTS.md`.
