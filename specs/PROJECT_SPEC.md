@@ -1,6 +1,6 @@
 # PROJECT_SPEC — нативное управление сессиями Claude Code через Telegram
 
-Status: спека готова, фаза 0 из 9 — spike-эксперименты не начаты
+Status: фаза 0 из 9 done — spike-эксперименты закрыли assumed-факты; фаза 1 (скелет) не начата
 
 Документ объединяет идеи двух референсов — `reference_spec_claude_code.md` (мост claude-tg:
 тема форума = сессия Claude Code) и `reference_spec_tg_ux.md` (нативный чат-UX для LLM в
@@ -86,20 +86,22 @@ headless, sessions, permissions, permission-modes, hooks, agent-sdk/*), core.tel
 | `stream_event` — сырые события API (`message_start`, `content_block_start/delta/stop` с `text_delta` / `thinking_delta` / `input_json_delta`, `message_delta`, `message_stop`); только главная сессия. `assistant`/`user` сообщения подагентов несут `parent_tool_use_id`; их текст — только с `--forward-subagent-text`. | verified |
 | `result`: `subtype` (`success`, `error_max_turns`, `error_max_budget_usd`, …), `is_error`, `duration_ms`, `duration_api_ms`, `num_turns`, `total_cost_usd`, `usage`, `session_id`, `permission_denials[]`, `structured_output`. | verified (список subtype — частично) |
 | `--permission-mode`: `default` (=`manual`), `acceptEdits`, `plan`, `auto`, `dontAsk`, `bypassPermissions`. Под `-p` стартовый режим всегда `default`. `--permission-prompt-tool <mcp_tool>` — обработчик запросов; не может одобрить MCP-инструменты с `requiresUserInteraction`. | verified |
-| Порядок оценки разрешений: hooks → deny → ask → mode → allow → prompt-callback. `AskUserQuestion` и `ExitPlanMode` всегда доходят до callback (в `dontAsk` — отказ). `plan` шлёт правки и пишущие shell-команды в callback даже при allow-правилах. | verified (SDK-доки; для CLI prompt tool — assumed, что путь тот же) |
+| Порядок оценки разрешений: hooks → deny → ask → mode → allow → prompt-callback. `AskUserQuestion` и `ExitPlanMode` всегда доходят до callback (в `dontAsk` — отказ). `plan` шлёт правки и пишущие shell-команды в callback даже при allow-правилах. | verified (доки + spike: оба инструмента пришли в prompt tool) |
 | Ответ на `AskUserQuestion`: `updatedInput = {questions: <исходные>, answers: {<question>: <label | [labels]>}, response?: <свободный текст>}`. Вход: `questions[] {question, header ≤12, options[2..4] {label, description}, multiSelect}`. | verified (SDK) |
-| «Всегда»: `updatedPermissions: [PermissionUpdate{type: addRules, rules: [{toolName, ruleContent}], behavior: allow, destination: session|localSettings|projectSettings|userSettings}]`; CLI даёт готовые `suggestions`. `localSettings` пишет в `.claude/settings.local.json` в корне git-репозитория. | verified (SDK); применение через prompt tool — assumed |
-| JSON-контракт MCP prompt tool: вход `{tool_name, input, tool_use_id, permission_suggestions?}`, выход — строка JSON `{"behavior":"allow","updatedInput":{…},"updatedPermissions":[…]}` или `{"behavior":"deny","message":"…"}`. | **assumed** (старые версии headless-доков + claude-tg) |
-| `ExitPlanMode` приходит в callback с планом в `input.plan`; одобрение = allow; смена режима на `acceptEdits` — через `updatedPermissions[{type:"setMode", mode, destination:"session"}]`. | **assumed** |
+| «Всегда»: `updatedPermissions: [PermissionUpdate{type: addRules, rules: [{toolName, ruleContent}], behavior: allow, destination: session|localSettings|projectSettings|userSettings}]`. Через prompt tool работает: `session` — второй `mkdir` не спрошен; `localSettings` — в `.claude/settings.local.json` песочницы появилось `{"permissions":{"allow":["Bash(mkdir *)"]}}`. **`permission_suggestions` CLI в prompt tool не передаёт** — правило строит мост. | verified (spike 1) |
+| JSON-контракт MCP prompt tool: `tools/call` с `arguments = {tool_name, input, tool_use_id}` и `_meta: {"claudecode/toolUseId", progressToken}`; ответ — text-content со строкой JSON `{"behavior":"allow","updatedInput":{…},"updatedPermissions":[…]}` или `{"behavior":"deny","message":"…"}`. Deny с `message` → `tool_result{is_error:true, content:<message>}`, модель меняет подход; `result.permission_denials` считает и такие отказы. MCP-клиент CLI: протокол `2025-11-25`, `initialize` → `notifications/initialized` → `tools/list`. | verified (spike 1, deny) |
+| `ExitPlanMode` приходит в prompt tool с `input = {plan: <markdown>, planFilePath}`; allow + `updatedPermissions[{type:"setMode", mode:"acceptEdits", destination:"session"}]` переключает режим: следующий `Write` прошёл без вопроса. В plan mode запись плана в `~/.claude/plans/*.md` разрешена автоматически. | verified (spike 2b) |
 | Резюм в plan mode под `-p` возможен только с `--permission-prompt-tool`, без `--permission-mode` и без `--fork-session`. | verified |
 | Синтаксис правил: `Bash(git status *)` (пробел перед `*` = префикс), `Bash(npm run build)` точное, `:*` эквивалент, `Edit(path)`/`Read(path)` с `//abs`, `WebFetch(domain:x)`, `mcp__server__tool`, deny с голым именем убирает инструмент. Compound-команды матчатся по каждой части. | verified |
-| Сессии: `--session-id <uuid>`, `--resume <id|name>` (ищет по всем проектам машины, v2.1.223+), `--fork-session`, `--continue`, `-n/--name`. Транскрипты: `$CLAUDE_CONFIG_DIR/projects/<cwd, не-alnum→'-'>/<session-id>.jsonl`; формат внутренний. Заголовки: custom title (`/rename`, `--name`), сгенерированный, первый промпт. `claude -p` сессии не показываются в интерактивном picker, но резюмятся по id. | verified |
-| Python-пакет `claude-agent-sdk` даёт `list_sessions(directory)`, `get_session_info()`, `rename_session()`, `tag_session()` — читать индекс можно без запуска процесса. | verified (сигнатуры), поведение без CLI-процесса — assumed |
+| Сессии: `--session-id <uuid>`, `--resume <id|name>` (ищет по всем проектам машины; spike 5: resume из другой cwd вспомнил кодовое слово, `init.cwd` = новая cwd, транскрипт остался в папке исходного проекта), `--fork-session` (новый id, контекст скопирован), `--continue`, `-n/--name`. Транскрипты: `$CLAUDE_CONFIG_DIR/projects/<cwd, не-alnum→'-'>/<session-id>.jsonl`; формат внутренний. Заголовки: custom title (`/rename`, `--name`), сгенерированный, первый промпт. `claude -p` сессии не показываются в интерактивном picker, но резюмятся по id. | verified |
+| Python-пакет `claude-agent-sdk` 0.2.152: `list_sessions(directory, limit)` без запуска процесса возвращает `SDKSessionInfo{session_id, summary, custom_title, cwd, last_modified…}` и видит сессии, начатые в терминале. | verified (spike 7) |
 | Slash-команды через промпт в `-p`: `/compact`, `/clear`, `/context`, `/cost`, `/model x`, `/effort x`, `/rename x`, `/config k=v`, `/mcp`, skills `/<name>`. Нет: `/login`, `/theme`, интерактивные. `/compact` без истории — `success` с текстом причины. | verified |
-| Изображение в промпт: user message `{type:"user", message:{role:"user", content:[{type:"text",…},{type:"image", source:{type:"base64", media_type, data}}]}}` на stdin в stream-json. | verified (SDK streaming input); для сырого CLI — assumed |
-| Отмена: SIGINT завершает текущий ход; SIGTERM — процесс выходит с 143, ход не дописан, при resume продолжается; при SIGTERM убивается дерево Bash-процессов, `SessionEnd` hooks выполняются. Фоновые Bash-задачи гасятся через ~5 с после результата. | verified; «SIGINT завершает ход, но процесс остаётся жив и принимает следующий stdin-ход» — assumed |
+| Изображение в промпт: user message `{type:"user", message:{role:"user", content:[{type:"text",…},{type:"image", source:{type:"base64", media_type, data}}]}}` на stdin в stream-json — модель видит картинку. | verified (spike 3) |
+| Отмена: SIGINT завершает ход — приходит `user` с текстом `[Request interrupted by user]`, `tool_result{is_error}` для прерванного вызова, `result/error_during_execution` (`stop_reason: tool_use`), **процесс выходит с кодом 0** и следующий stdin-ход не принимает. `--resume` после этого работает, контекст цел. SIGTERM — код 143, ход не дописан. | verified (spike 4, sigint_resume) |
 | Hooks-события (через `--settings` JSON): `PreToolUse`, `PostToolUse`, `PermissionRequest`, `PermissionDenied`, `Notification` (`permission_prompt`, `idle_prompt`, `agent_needs_input`…), `Stop`, `SubagentStart/Stop`, `PreCompact/PostCompact`, `SessionStart/End`, `TaskCreated/Completed`, `CwdChanged`; `--include-hook-events` выводит их в поток. | verified |
 | File checkpointing: `CLAUDE_CODE_ENABLE_SDK_FILE_CHECKPOINTING=true`; чекпойнт = `uuid` user-сообщения (нужен `--replay-user-messages`); `claude -p --resume <id> --rewind-files <uuid>`; только Write/Edit/NotebookEdit, не Bash, не подагенты. | verified |
+| `--verbose` **обязателен** с `--output-format stream-json` под `-p` (иначе `Error: … requires --verbose`). `--permission-mode manual` — alias `default`. Новый флаг `--permission-prompts host|none` (`none` = всё, что спросило бы, отклоняется). | verified (help, spike 6, 9) |
+| События потока, не описанные в доках: `system/status {status: requesting}`, `system/thinking_tokens {estimated_tokens}`, `system/permission_denied {tool_name, tool_use_id, decision_reason_type, decision_reason, message}` (при `dontAsk`/`--permission-prompts none`), `rate_limit_event {rate_limit_info: {status, unifiedWindows: {five_hour: {utilization, resetsAt}, seven_day: …}}}`. `assistant`-события приходят **по одному блоку контента** (thinking, text, tool_use — отдельными событиями с одним `message.id`), `user` с `tool_result` — по одному на вызов. `init` несёт также `permissionMode`, `agents`, `skills`, `slash_commands`, `capabilities`, `claude_code_version`, `apiKeySource`. `result` несёт `stop_reason`, `terminal_reason`, `modelUsage{<model>: {costUSD, contextWindow, …}}`, `subagent_stats`. | verified (spike 1, 6, 9) |
 | Прочие флаги: `--bare`, `--max-turns`, `--max-budget-usd`, `--effort low|medium|high|xhigh|max`, `--fallback-model`, `--model`, `--json-schema`, `--agents`, `--settings <file|json>`, `--setting-sources`, `--add-dir`, `--mcp-config`, `--strict-mcp-config`, `--append-system-prompt[-file]`, `--no-session-persistence`, `--disable-slash-commands`, `--forward-subagent-text`. `--max-turns` со stream-json: очередное сообщение начинает новый счёт. | verified |
 | Официальные channels (Telegram-плагин, research preview): одна интерактивная сессия, пейринг, allowlist, под `-p` вопросы и plan approval отключены; один токен = один поллер. | verified |
 
@@ -117,16 +119,22 @@ headless, sessions, permissions, permission-modes, hooks, agent-sdk/*), core.tel
 | Лимиты: text 4096, caption 1024, `getFile` ≤20 МБ, upload ≤50 МБ, ~1 сообщение/с в чат, ≤20/мин в группе, 429 с `retry_after`. `sendChatAction` с `message_thread_id`; `reply_parameters.quote` (точная подстрока). Альбом = `media_group_id`, 2–10 элементов. | verified |
 | aiogram 3.31.0 (2026-08-26) поддерживает Bot API 10.3: `send_rich_message`, `send_rich_message_draft`, `stopped_message_generation`, форум-методы, реакции. python-telegram-bot 22.8 — только API 10.0. | verified |
 
-### 2.3 Эксперименты фазы 0 (закрывают assumed)
+### 2.3 Эксперименты фазы 0
 
-1. Точный JSON входа/выхода MCP prompt tool; проходит ли `updatedPermissions` (и `setMode`).
-2. Как через prompt tool приходят `AskUserQuestion` (поле `questions`) и `ExitPlanMode` (поле `plan`); что происходит после allow `ExitPlanMode` без смены режима.
-3. Image block через stdin сырого CLI.
-4. SIGINT в `-p` со stream-json: ход прерывается, а процесс живёт? Если нет — политика «убить и resume».
-5. `--resume` внутри контейнера при смонтированном `CLAUDE_CONFIG_DIR` для сессии, начатой на хосте в терминале (совпадение путей `/work/...` ↔ хостовых).
-6. Сколько текста CLI отдаёт до tool call при `--include-partial-messages` (границы сегментов), и нужен ли `--verbose` для `stream_event`.
-7. `claude-agent-sdk.list_sessions()` работает без запуска CLI и видит терминальные сессии.
-8. Draft rendering в Telegram Desktop/iOS/Android для `<tg-thinking>` + markdown с код-блоком.
+Выполнены 2026-09-03 скриптами `spikes/spike.py` + `spikes/mcp_spike_server.py` против
+`claude` 2.1.259 на haiku (детали — `specs/PHASE_0_SPIKE.md`). Закрыты: 1 (контракт prompt
+tool, `updatedPermissions` session/localSettings, deny с сообщением), 2 (`AskUserQuestion`,
+`ExitPlanMode` + `setMode`), 3 (image block), 4 (SIGINT), 5 (resume/fork из другой cwd на
+хосте), 6 (сегменты, `--verbose`), 7 (`list_sessions`), 9 (`permission_denied`).
+
+Остаются на следующие фазы:
+
+- **Фаза 1**: `--resume` внутри контейнера для сессии, начатой на хосте — пути `/work/...`
+  в контейнере и хостовые пути дают разные `projects/<encoded-cwd>` директории; поиск по id
+  идёт по всем проектам, но `cwd` в транскрипте будет хостовым. Проверить с реальным compose.
+- **Фаза 3 smoke**: рендер `sendRichMessageDraft` с `<tg-thinking>` и код-блоками в
+  Telegram Desktop/iOS/Android.
+- **Фаза 5**: поведение `auto`-режима под `-p` с prompt tool (доходят ли спорные вызовы).
 
 ---
 
@@ -136,9 +144,9 @@ headless, sessions, permissions, permission-modes, hooks, agent-sdk/*), core.tel
 |---|---|
 | Стек | Python 3.12, aiogram 3.31+, PostgreSQL 16 (asyncpg), pytest (`asyncio_mode=auto`). Без Agent SDK для запуска процессов; пакет `claude-agent-sdk` — только как библиотека чтения индекса сессий (при провале эксперимента 7 — свой парсер `projects/`). |
 | Единица работы | Тема = сессия. Форум-супергруппа с Topics **и** личный чат с включёнными topics (рекомендуемая установка: личка + topics → и темы, и drafts). Личка без topics и группа без Topics — одна сессия на чат, `/project` недоступен. |
-| Процесс | Один долгоживущий `claude -p …` на тему; ходы подаются в stdin по очереди; гасится по простою; поднимается через `--resume`. |
+| Процесс | Один долгоживущий `claude -p …` на тему; ходы подаются в stdin по очереди; гасится по простою; поднимается через `--resume`. Отмена = SIGINT: CLI закрывает ход и выходит (spike 4), следующий ход поднимает процесс через `--resume`. |
 | Разрешения | Режим `prompt` моста = `--permission-mode default` + `--permission-prompt-tool mcp__tgbridge__approve`. MCP-сервер `tgbridge` — stdio-процесс из репозитория, ходит в демон по unix-сокету. |
-| «Всегда» | Правило из `permission_suggestions` с `destination=localSettings` (общее с терминалом, в `.claude/settings.local.json` репозитория). Если suggestions нет — собственное правило моста по таблице §5.6, хранится в БД на тему и применяется мостом сам. |
+| «Всегда» | CLI не присылает suggestions (spike 1), поэтому правило строит мост по таблице §4.6.3 и возвращает его в `updatedPermissions` с `destination=localSettings`: правило попадает в `.claude/settings.local.json` репозитория, действует и в терминале, переживает перезапуск процесса. Мост ведёт учёт добавленных им правил (`topic_rules`) для `/perm` и `/perm forget`. |
 | Вопросы модели | `AskUserQuestion` → карточки с кнопками, по одной на вопрос; «✍ Свой ответ» — следующее текстовое сообщение темы. |
 | Планы | `ExitPlanMode` → rich-карточка с планом и кнопками «Выполнять (acceptEdits)», «Выполнять, спрашивать про правки», «Доработать план». |
 | Входной конвейер | Батчер 300 мс на тему, сортировка по `message_id`, один ход на батч. Форварды и документы без подписи — в staging темы, отвечать не нужно; квитанция — реакция 👀. |
@@ -216,7 +224,11 @@ Telegram, если известно). Процесс `claude` поднимает
 Ход          идёт 1 м 12 с · Grep → Read src/main.rs · нет
 Staging      2 форварда, 1 файл
 Последний    1 м 12 с · $0.08 · 3 шага · 12k in / 1.4k out
+Лимиты       5 ч: 25% (сброс через 2 ч 50 м) · 7 дн: 10%
 ```
+
+Строка «Лимиты» — из последнего `rate_limit_event` любой темы (загрузка окон подписки);
+на API-ключе строки нет.
 
 ### 4.3 Команды
 
@@ -392,8 +404,9 @@ Telegram не отдаёт его ботам.`, элемент пропуска�
 
 #### 4.5.4 Доставка текста
 
-- Текстовый сегмент уходит финальным rich-сообщением: при каждом tool call (то, что
-  модель написала до вызова), при накоплении 30 000 символов, в конце хода. Сегменты короче
+- Текстовый сегмент уходит финальным rich-сообщением: по завершении текстового блока
+  (CLI присылает `assistant[text]` отдельным событием сразу после `content_block_stop`,
+  до следующего tool call), при накоплении 30 000 символов, в конце хода. Сегменты короче
   `MIN_SEGMENT_CHARS = 120` перед tool call не отправляются отдельно, а склеиваются со
   следующим сегментом (чтобы «Посмотрю файл.» не засорял ленту) — это отличие от claude-tg.
 - Rich Markdown передаётся **как есть**: заголовки, таблицы, списки, code fences с языком,
@@ -424,7 +437,7 @@ Telegram не отдаёт его ботам.`, элемент пропуска�
 
 | Причина | Вердикт (заменяет индикатор, кнопка убирается) |
 |---|---|
-| `/cancel`, кнопка 🛑, `stopped_message_generation` | `🛑 Прервано.` Накопленный текст сегмента отправляется финалом с пометкой `(прервано)` |
+| `/cancel`, кнопка 🛑, `stopped_message_generation` | `🛑 Прервано.` Мост шлёт SIGINT; CLI дописывает в транскрипт `[Request interrupted by user]`, отдаёт `result/error_during_execution` и выходит; накопленный текст сегмента отправляется финалом с пометкой `(прервано)`. Следующий ход — `--resume` |
 | `TURN_TIMEOUT_SECS` (60 мин) | `⏱ Ход шёл дольше лимита и был прерван. Контекст сохранён.` |
 | Процесс упал (после одной незаметной попытки повтора) | `💥 Процесс claude завершился (код N).` + хвост stderr (без токенов) + `Контекст сохранён — /retry повторит.` |
 | Демон остановлен | `⏹ Демон остановлен посреди хода. Контекст цел — /retry повторит.` |
@@ -497,16 +510,24 @@ _Проверить, что тесты проходят после правки_
 
 #### 4.6.3 «Всегда»
 
-- Если CLI прислал `permission_suggestions` — кнопка на каждое (≤ 2), ответ содержит
-  `updatedPermissions` с `destination = localSettings`: правило попадает в
-  `.claude/settings.local.json` репозитория и действует и в терминале. Подпись кнопки —
-  `ruleContent`.
-- Если suggestions нет — правило моста по таблице claude-tg (`Read`, `Grep`, `Glob`,
-  `WebSearch` — имя целиком; `Bash` — точная команда, только однострочная и ≤120 символов;
-  `Edit`/`Write`/MCP — кнопки нет, ответ — осознанный `/perm acceptEdits`). Хранится в
-  `topic_rules`, мост отвечает allow сам, не спрашивая.
-- `/perm` показывает оба списка (settings.local.json проекта — только чтение), `/perm forget`
-  забывает правила моста темы: `Забыла N правил. Снова буду спрашивать.`
+- CLI не передаёт в prompt tool подсказок правил, поэтому правило строит мост:
+
+  | Инструмент | Правило кнопки «Всегда» |
+  |---|---|
+  | `Read`, `Grep`, `Glob`, `WebSearch`, `NotebookRead`, `TodoWrite`, `TaskCreate/Update/List` | имя инструмента целиком |
+  | `Bash` | префикс `Bash(<cmd> <subcmd> *)` для известных программ с подкомандами (`git`, `npm`, `cargo`, `docker`, `make`, `pytest`, `uv`, `pip`…), иначе точная команда `Bash(<команда>)`; кнопки нет для многострочных, длиннее 120 символов, с `&&`/`|`/`;`, и для `rm`, `sudo`, `curl`, `wget` |
+  | `WebFetch` | `WebFetch(domain:<host>)` |
+  | `mcp__<server>__<tool>` | имя инструмента целиком, кроме `mcp__tgbridge__*` |
+  | `Edit`, `Write`, `NotebookEdit` | кнопки нет — ответ на «хочу, чтобы правки проходили сами» это осознанный `/perm acceptEdits` |
+
+- Ответ содержит `updatedPermissions: [{type: addRules, behavior: allow, destination:
+  localSettings, rules: [{toolName, ruleContent}]}]`: Claude Code сам пишет правило в
+  `.claude/settings.local.json` в корне репозитория проекта (spike 1), оно действует в
+  терминале и переживает перезапуск процесса. Мост дублирует запись в `topic_rules`
+  (тема, правило, путь файла) для учёта.
+- `/perm` показывает правила, добавленные ботом, и остальные allow-правила из
+  `settings.local.json` (только чтение); `/perm forget` удаляет из файла правила, которые
+  добавил бот в этой теме: `Забыла N правил. Снова буду спрашивать.`
 
 #### 4.6.4 Правила поверх режима
 
@@ -687,6 +708,13 @@ claude -p --verbose
        [--forward-subagent-text]
 ```
 
+`--verbose` обязателен для stream-json. Парсер обрабатывает: `system/init`,
+`system/compact_boundary`, `system/permission_denied`, `system/api_retry`, `assistant`
+(по одному блоку: `thinking` — игнор, `text` — сегмент, `tool_use` — след), `user`
+(`tool_result` — verbose-режим), `stream_event` (`text_delta`, `thinking_delta`,
+`content_block_start:tool_use`), `result`, `rate_limit_event` (для `/status`); остальные
+(`system/status`, `system/thinking_tokens`, неизвестные типы) — игнорирует без ошибки.
+
 Рабочая директория — директория темы. Окружение: `CLAUDE_CONFIG_DIR`, `HOME`, `PATH`,
 `CLAUDE_CODE_ENABLE_SDK_FILE_CHECKPOINTING` (при флаге), провайдерские ключи из `.env`;
 токен бота и `DATABASE_URL` **вырезаны**. Ход = одна строка stdin
@@ -699,8 +727,8 @@ claude -p --verbose
   `IDLE_TIMEOUT_SECS` (30 мин) → stdin закрывается, процессу дают 10 с выйти, затем SIGTERM.
   Следующий ход поднимает `--resume`.
 - **Что перезапускает процесс, сохраняя контекст**: `/stop`, `/model`, `/effort`, `/perm`,
-  `/soul`, простой, падение, прерывание (если SIGINT не оставляет процесс живым —
-  эксперимент 4), остановка демона, смена `ADD_DIRS`.
+  `/soul`, простой, падение, прерывание (SIGINT завершает и ход, и процесс — spike 4),
+  остановка демона, смена `ADD_DIRS`.
 - **Что начинает контекст заново**: `/new`, `/clear`, `/cd`, `/go`, `/project`; `/resume`
   и `/branch` подменяют.
 - **Session id**: если `system/init` или `result` сообщают id, отличный от ожидаемого
@@ -853,7 +881,7 @@ Database / Features.
 
 | # | Фаза | Что входит | Тесты | Статус |
 |---|---|---|---|---|
-| 0 | Spike | Эксперименты 2.3 против реального `claude`; результаты — в раздел 2 этой спеки | скрипты в `spikes/`, без suite | ⏳ |
+| 0 | Spike | Эксперименты 2.3 против реального `claude`; результаты — в раздел 2 этой спеки | скрипты в `spikes/`, без suite | ✅ |
 | 1 | Скелет | `settings.py`, БД + миграции, compose, aiogram polling, access middleware, dedup, outbox, `/help`, `/whoami`, `/topics`; e2e-инфра: recording session, fake `claude`, `scripts/test.sh`; `specs/E2E_TESTS.md` | доступ (чужой молчит), outbox доставка/повтор/429, dedup | ⏳ |
 | 2 | Процесс и ход | `ClaudeProcess`, парсер stream-json, `TurnRunner`, очередь темы, `/new`, `/stop`, `/cancel`, `/retry`, `/status`, `/cd`, `/go`, плоская доставка ответа (rich без стриминга), сообщения конца хода и обрыва, idle/turn таймауты | простой ход, очередь, cancel, падение+retry, resume после idle, compact_boundary | ⏳ |
 | 3 | Стриминг и рендер | draft в личке (`<tg-thinking>`, can_stop, keepalive), прогресс в группах, шлюзы, сплиттер, plain-fallback, файл при длинном ответе, склейка сегментов, thinking-превью | границы контента, fallback, stop через draft, 429 на правке | ⏳ |
@@ -866,7 +894,11 @@ Database / Features.
 
 ### Результаты фаз
 
-_(заполняется по мере выполнения)_
+- **Фаза 0** (2026-09-03): 11 прогонов на haiku, ~$0.30. Все assumed-факты раздела 2 закрыты,
+  дизайн подтверждён; уточнения: «Всегда» без suggestions (правило строит мост), отмена
+  через SIGINT завершает процесс (следующий ход — resume), `--verbose` обязателен, парсер
+  должен игнорировать незнакомые события. Открытый вопрос 7 (SDK vs CLI) снят: сырой CLI
+  даёт всё нужное.
 
 ---
 
@@ -910,9 +942,8 @@ _(заполняется по мере выполнения)_
    эксперимент.
 6. **Хранить ли историю сообщений темы в БД** (для поиска/экспорта) — сейчас только
    `message_links`; транскрипт есть у Claude Code.
-7. **Официальный SDK вместо сырого CLI** — если эксперименты 1–4 покажут, что prompt tool не
-   даёт `updatedPermissions`/`setMode`, вернуться к обсуждению `claude-agent-sdk`
-   (`can_use_tool` даёт всё это нативно). Решение пользователя — сырой CLI; фиксируем риск.
+7. ~~Официальный SDK вместо сырого CLI~~ — снят в фазе 0: prompt tool сырого CLI даёт
+   `updatedPermissions` и `setMode`.
 8. **Задачи модели** (`TaskCreate`/`TaskCompleted`) как живой чек-лист — ждём hooks-события в
    потоке; формат и ценность проверить в фазе 8.
 9. **Локализация** текстов бота (ru/en) — не в scope, но строки держать в одном модуле.
