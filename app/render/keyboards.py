@@ -46,7 +46,7 @@ def _onoff(value: bool) -> str:
 
 def topic_card_kb(topic_id: int, *, running: bool, perm: str, model: str, effort: str,
                   flags: dict[str, bool], labels: dict[str, str], page: str = "main",
-                  rules: int = 0) -> InlineKeyboardMarkup:
+                  rules: int = 0, rewind: bool = False) -> InlineKeyboardMarkup:
     """The topic card keyboard. `flags`/`labels`: switch key -> value / caption (PROJECT_SPEC 4.9);
     `rules` = «Всегда» rules added by the bot in this topic (a «Забыть правила» button when > 0)."""
     if page == "more":
@@ -55,6 +55,8 @@ def topic_card_kb(topic_id: int, *, running: bool, perm: str, model: str, effort
                 for i in range(0, len(keys), 2)]
         if rules:
             rows.append([_btn(f"Забыть правила «Всегда» ({rules})", cb("forget", topic_id))])
+        if rewind:
+            rows.append([_btn("Откатить файлы", cb("rwl", topic_id))])
         rows.append([_btn("Назад", cb("page", topic_id, "main"))])
         return InlineKeyboardMarkup(inline_keyboard=rows)
     rows = []
@@ -68,6 +70,18 @@ def topic_card_kb(topic_id: int, *, running: bool, perm: str, model: str, effort
     rows.append([_btn("Обновить", cb("refresh", topic_id)), _btn("Скрыть", cb("hide", topic_id)),
                  _btn("Удалить тему", cb("del", topic_id))])
     return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+def rewind_list_kb(topic_id: int, turns: list[tuple[int, str]]) -> InlineKeyboardMarkup:
+    """turns: (turn id, prompt label)."""
+    rows = [[_btn(f"До: «{label}»"[:64], cb("rw", topic_id, str(tid)))] for tid, label in turns]
+    rows.append([_btn("Скрыть", cb("hide", topic_id))])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+def rewind_confirm_kb(topic_id: int, turn_id: int) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(inline_keyboard=[[_btn("Да, откатить", cb("rwc", topic_id, str(turn_id))),
+                                                  _btn("Отмена", cb("hide", topic_id))]])
 
 
 def hide_kb(topic_id: int) -> InlineKeyboardMarkup:

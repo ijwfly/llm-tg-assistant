@@ -86,6 +86,12 @@ async def on_callback(cq: CallbackQuery, app) -> None:
         elif action == "cyc":
             toast = await actions.cycle_setting(app, topic, arg or "")
             await _refresh_after(app, topic, cq)
+        elif action == "rwl":
+            toast = await actions.rewind_list(app, topic)
+        elif action == "rw":
+            toast = await actions.rewind_ask(app, topic, int(arg) if (arg or "").isdigit() else 0, cq.message.message_id if cq.message else None)
+        elif action == "rwc":
+            toast = await actions.rewind(app, topic, int(arg) if (arg or "").isdigit() else 0, cq.message.message_id if cq.message else None)
         elif action == "forget":
             toast = await actions.forget_rules(app, topic)
             await _refresh_after(app, topic, cq, page="more")

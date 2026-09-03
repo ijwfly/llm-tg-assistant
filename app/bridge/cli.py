@@ -33,6 +33,8 @@ def child_env() -> dict[str, str]:
            if k not in _STRIP_KEYS and not k.startswith(_STRIP_PREFIXES)}
     if settings.CLAUDE_CONFIG_DIR:
         env["CLAUDE_CONFIG_DIR"] = settings.CLAUDE_CONFIG_DIR
+    if settings.FILE_CHECKPOINTING:
+        env["CLAUDE_CODE_ENABLE_SDK_FILE_CHECKPOINTING"] = "true"
     env.update(settings.CLAUDE_ENV)
     return env
 

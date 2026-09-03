@@ -138,6 +138,15 @@ class TurnsRepo:
     async def get(self, turn_id: int) -> dict | None:
         return _row(await self.db.fetchrow("SELECT * FROM turns WHERE id = $1", turn_id))
 
+    async def set_checkpoint(self, turn_id: int, uuid_: str) -> None:
+        await self.db.execute("UPDATE turns SET checkpoint_uuid = $2 WHERE id = $1 AND checkpoint_uuid IS NULL", turn_id, uuid_)
+
+    async def with_checkpoints(self, topic_id: int, limit: int = 5) -> list[dict]:
+        """Newest turns of the topic that have a file checkpoint (for «Откатить файлы»)."""
+        return [dict(r) for r in await self.db.fetch(
+            "SELECT * FROM turns WHERE topic_id = $1 AND checkpoint_uuid IS NOT NULL ORDER BY id DESC LIMIT $2",
+            topic_id, limit)]
+
     async def month_usage(self) -> list[dict]:
         """Finished turns of the current calendar month: per topic and model, with tokens and cost."""
         return [dict(r) for r in await self.db.fetch(

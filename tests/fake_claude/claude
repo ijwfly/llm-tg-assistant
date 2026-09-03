@@ -41,7 +41,7 @@ def emit(ev):
 
 def parse_args(argv):
     out = {"session_id": None, "resume": None, "fork": False, "mcp_config": None, "prompt_tool": None,
-           "permission_mode": "default", "model": "fake-model", "cwd": os.getcwd()}
+           "permission_mode": "default", "model": "fake-model", "cwd": os.getcwd(), "rewind": None, "replay": False}
     i = 0
     while i < len(argv):
         a = argv[i]
@@ -60,6 +60,10 @@ def parse_args(argv):
             out["permission_mode"] = nxt; i += 1
         elif a == "--model":
             out["model"] = nxt; i += 1
+        elif a == "--rewind-files":
+            out["rewind"] = nxt; i += 1
+        elif a == "--replay-user-messages":
+            out["replay"] = True
         i += 1
     return out
 
@@ -150,6 +154,11 @@ def main():
     log({"argv": sys.argv[1:], "cwd": os.getcwd(), "env": {k: v for k, v in os.environ.items()
                                                             if k.startswith(("CLAUDE", "TGBRIDGE", "FAKE_CLAUDE"))}})
     session_id = args["session_id"] or args["resume"] or str(uuid.uuid4())
+    if args["rewind"]:   # standalone operation (verified 2026-09-03): one line on stdout, no prompt, exit 0
+        sys.stdout.write(f"Files rewound to state at message {args['rewind']}\n")
+        sys.stdout.flush()
+        log({"rewind": args["rewind"], "resume": args["resume"]})
+        sys.exit(0)
     if args["fork"]:
         session_id = str(uuid.uuid4())
     ctx = {"session_id": session_id, "cwd": args["cwd"]}
@@ -185,6 +194,10 @@ def main():
         log({"stdin": msg})
         if msg.get("type") != "user":
             continue
+        if args["replay"]:   # the CLI echoes the user message back with its uuid (--replay-user-messages)
+            echo_uuid = str(uuid.uuid4())
+            emit({"type": "user", "uuid": echo_uuid, "session_id": session_id, "message": msg["message"]})
+            log({"user_uuid": echo_uuid})
         scenario = pop_scenario()
         if scenario is None:
             sys.stderr.write("fake claude: no scenario left\n")

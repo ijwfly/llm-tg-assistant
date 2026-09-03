@@ -58,6 +58,7 @@ class TurnState:
     model: str | None = None            # from system/init
     spoken: list[str] = field(default_factory=list)   # text segments sent, for the voice answer
     tools: dict = field(default_factory=dict)          # tool_use_id -> (name, detail) for verbose output
+    checkpoint: str | None = None       # uuid of this turn's user message (replayed by the CLI)
 
     @property
     def preview_text(self) -> str:
@@ -320,6 +321,10 @@ class TopicRuntime:
                                                         topic_id=self.topic_id, turn_id=state.turn_id, role="tool")
             elif isinstance(e, ev.PermissionDenied):
                 state.denials.append(e.tool_name)
+            elif isinstance(e, ev.UserEcho):
+                if e.uuid and e.text is not None and state.checkpoint is None and not e.text.startswith("[Request interrupted"):
+                    state.checkpoint = e.uuid
+                    await self.app.store.turns.set_checkpoint(state.turn_id, e.uuid)
             elif isinstance(e, ev.RateLimit):
                 self.app.runtimes.rate_limit = e.info
             elif isinstance(e, ev.CompactBoundary):

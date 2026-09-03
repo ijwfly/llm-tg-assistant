@@ -15,7 +15,7 @@ from app.bridge.cli import PERMISSION_MODES
 from app.bridge.rules import forget_rules as _forget_in_files, local_allow_rules
 from app.core import prefs
 from app.core.runtime import QueueFull, TurnRequest
-from app.render.keyboards import confirm_delete_kb, sessions_kb, topic_card_kb
+from app.render.keyboards import confirm_delete_kb, rewind_confirm_kb, rewind_list_kb, sessions_kb, topic_card_kb
 from app.transport import texts
 
 ICON_COLORS = [0x6FB9F0, 0xFFD67E, 0xCB86DB, 0x8EEE98, 0xFF93B2, 0xFB6F5F]   # the six Telegram allows
@@ -209,7 +209,7 @@ async def topic_card(app, topic: dict, *, page: str = "main", user_id: int | Non
     rules = len(await app.store.rules.list(topic["id"])) if page == "more" else 0
     kb = topic_card_kb(topic["id"], running=running, perm=topic.get("permission_mode") or settings.DEFAULT_PERMISSION_MODE,
                        model=prefs.shown(topic.get("model")), effort=prefs.shown(topic.get("effort")),
-                       flags=flags, labels=prefs.FLAG_LABELS, page=page, rules=rules)
+                       flags=flags, labels=prefs.FLAG_LABELS, page=page, rules=rules, rewind=settings.FILE_CHECKPOINTING)
     return texts.status(topic, state, staging, title, app.runtimes.rate_limit), kb
 
 
@@ -448,6 +448,65 @@ async def usage_card(app, topic: dict) -> str:
     text = texts.usage_card(rows, date.today().strftime("%Y-%m"))
     await send_to_topic(app, topic, text, reply_markup=hide_kb(topic["id"]), role="card")
     return text
+
+
+# ---------------------------------------------------------------- rewind (PROJECT_SPEC 4.3, FILE_CHECKPOINTING)
+
+def _prompt_label(turn: dict, limit: int = 40) -> str:
+    text = " ".join(b.get("text", "") for b in (turn.get("prompt") or []) if b.get("type") == "text")
+    text = " ".join(text.split())
+    return text[:limit] + ("…" if len(text) > limit else "")
+
+
+async def rewind_list(app, topic: dict) -> str:
+    turns = await app.store.turns.with_checkpoints(topic["id"])
+    if not turns:
+        await send_to_topic(app, topic, texts.REWIND_EMPTY)
+        return texts.REWIND_EMPTY
+    await send_to_topic(app, topic, texts.REWIND_LIST,
+                        reply_markup=rewind_list_kb(topic["id"], [(t["id"], _prompt_label(t)) for t in turns]), role="card")
+    return ""
+
+
+async def rewind_ask(app, topic: dict, turn_id: int, message_id: int | None) -> str:
+    turn = await app.store.turns.get(turn_id)
+    if not turn or turn["topic_id"] != topic["id"] or not turn.get("checkpoint_uuid"):
+        return texts.TOAST_STALE
+    text = texts.REWIND_CONFIRM.format(prompt=_prompt_label(turn))
+    if message_id:
+        await app.sender.edit_text(topic["chat_id"], topic["thread_id"], message_id, text,
+                                   reply_markup=rewind_confirm_kb(topic["id"], turn_id), topic_id=topic["id"])
+    else:
+        await send_to_topic(app, topic, text, reply_markup=rewind_confirm_kb(topic["id"], turn_id), role="card")
+    return ""
+
+
+async def rewind(app, topic: dict, turn_id: int, message_id: int | None) -> str:
+    """`claude -p --resume <id> --rewind-files <uuid>` is a standalone operation: stop the topic's process,
+    run it once, report its one-line result."""
+    import asyncio
+    from app.bridge.cli import child_env
+    turn = await app.store.turns.get(turn_id)
+    if not turn or turn["topic_id"] != topic["id"] or not turn.get("checkpoint_uuid") or not topic["session_id"]:
+        return texts.TOAST_STALE
+    await app.runtimes.get(topic).stop_process()
+    argv = [settings.CLAUDE_BIN, "-p", "--resume", str(topic["session_id"]), "--rewind-files", turn["checkpoint_uuid"]]
+    try:
+        proc = await asyncio.create_subprocess_exec(*argv, cwd=topic["cwd"], env=child_env(), stdin=asyncio.subprocess.DEVNULL,
+                                                    stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE)
+        out, err = await asyncio.wait_for(proc.communicate(), timeout=120)
+    except (OSError, asyncio.TimeoutError) as e:
+        text = texts.REWIND_FAILED.format(reason=repr(e))
+    else:
+        if proc.returncode == 0:
+            text = texts.REWIND_DONE.format(text=(out.decode(errors="replace").strip() or "files rewound")[:300])
+        else:
+            text = texts.REWIND_FAILED.format(reason=(err.decode(errors="replace").strip() or f"code {proc.returncode}")[-300:])
+    if message_id:
+        await app.sender.edit_text(topic["chat_id"], topic["thread_id"], message_id, text, topic_id=topic["id"])
+    else:
+        await send_to_topic(app, topic, text)
+    return texts.TOAST_REWOUND if text.startswith("⏪") else texts.TOAST_FAILED
 
 
 async def rename_topic(app, topic: dict, name: str, *, tell_claude: bool = True) -> str:

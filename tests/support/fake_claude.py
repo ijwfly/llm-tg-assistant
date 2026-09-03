@@ -149,6 +149,12 @@ class FakeClaude:
     def mcp_tools(self) -> list[list[str]]:
         return [rec["mcp_tools"] for rec in self.log() if "mcp_tools" in rec]
 
+    def user_uuids(self) -> list[str]:
+        return [rec["user_uuid"] for rec in self.log() if "user_uuid" in rec]
+
+    def rewinds(self) -> list[dict]:
+        return [rec for rec in self.log() if "rewind" in rec]
+
     def decisions(self) -> list[dict]:
         """Decisions the prompt tool returned, in order."""
         return [rec["prompt_decision"] for rec in self.log() if "prompt_decision" in rec]

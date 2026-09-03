@@ -43,6 +43,7 @@ ADD_DIRS: list[str] = []                                  # --add-dir, extra dir
 BRIDGE_SEND_FILE_TOOL: bool = True                        # mcp__tgbridge__send_file: the model can send a file to the topic
 VERBOSE_TOOL_OUTPUT: bool = False                         # default for the topic flag «Вывод инструментов»
 FORWARD_SUBAGENT_TEXT: bool = False                       # --forward-subagent-text; subagent text shown in <details>
+FILE_CHECKPOINTING: bool = False                          # CLAUDE_CODE_ENABLE_SDK_FILE_CHECKPOINTING + «Откатить файлы» on the card
 CLAUDE_ENV: dict[str, str] = {}                           # extra environment for the claude process
 
 # --- Permissions, questions, plans (PROJECT_SPEC 4.6-4.7) ------------------------
