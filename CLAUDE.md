@@ -1,6 +1,71 @@
-# CLAUDE.md — development workflow
+# CLAUDE.md — project map and development workflow
 
-This file defines how work is done in this repository: the development loop, testing, git, specs, documentation, configuration and deployment. Follow it for every change, big or small. Placeholders in angle brackets (`<main>`, `<owner/repo>`) are project-specific values; replace them once when adopting this file.
+This file is the map of the project (§0) and defines how work is done in this repository: the development loop, testing, git, specs, documentation, configuration and deployment. Follow it for every change, big or small.
+
+## 0. Project map
+
+**What**: a Telegram bot that drives Claude Code sessions on a server with a native chat UX —
+one forum topic (or private-chat topic) = one Claude Code session. Design: `specs/PROJECT_SPEC.md`
+(read its status line first); phase specs `specs/PHASE_*.md`; tests `specs/E2E_TESTS.md`.
+
+**Run**: `cp .env.example .env`, `cp settings_local.py.example settings_local.py`, fill the
+token and `ALLOWED_USERS`, then `docker compose up -d --build`. Locally: `.venv/bin/python -m app.main`.
+Human-facing setup and operations: `README.md`.
+**Test**: `bash scripts/test.sh [-k name -v]` (needs Docker for the test Postgres).
+
+**Layout** (Python 3.12, aiogram 3.31, asyncpg, Postgres 16):
+
+| Path | Concern |
+|---|---|
+| `settings.py` / `settings_local.py` | defaults (env-var backed) / secrets and overrides, gitignored; display flags (`STREAM_PREVIEW`…) are only defaults — `core/prefs.py` reads the per-topic/per-user value |
+| `app/main.py` | entry point: validate settings, connect DB, migrate, polling |
+| `app/app.py` | `App`: wires store, sender, outbox worker, topics, dispatcher; start/stop notices |
+| `app/store/db.py`, `repos.py`, `migrations/` | asyncpg pool, idempotent `NNNN_*.sql` migrations (applied by the DB container init **and** at app start), repositories |
+| `app/transport/bot.py` | dispatcher wiring, `ALLOWED_UPDATES`, command menu (`BOT_COMMANDS`: the 8 commands that need an argument or have no button; everything else is a button — a test checks the menu matches the router) |
+| `app/transport/middleware.py` | `AccessMiddleware` (ALLOWED_USERS/ALLOWED_CHATS, silent), `DedupMiddleware` (update_id, marked before handling) |
+| `app/transport/handlers.py` | commands and messages; `build_router()` per dispatcher; `topic_ref()` maps a message to `(chat_id, thread_id)` |
+| `app/transport/sender.py`, `outbox.py` | the only door for outgoing calls: rows in `outbox`, worker delivers per-topic in order, parallel across topics, 429/backoff/failed |
+| `app/transport/texts.py` | every user-facing string (Russian) |
+| `app/core/topics.py` | `TopicRef`, `TopicService` |
+| `app/core/runtime.py` | `TopicRuntime` (queue, worker task, claude process, idle timer, turn loop, verdicts), `RuntimeRegistry` |
+| `app/bridge/cli.py`, `process.py`, `events.py` | argv/env builder (permission-mode map, prompt tool + inline `--mcp-config`, secret stripping), `ClaudeProcess` (spawn, stdin, events, SIGINT, graceful stop), typed stream-json events |
+| `app/bridge/sessions.py` | read-only index of Claude Code transcripts (`projects/<sanitized cwd>/<id>.jsonl`): titles, machine-wide listing inside `WORK_ROOT`, lookup by id/prefix/name |
+| `app/bridge/mcp_server.py`, `socket_server.py`, `rules.py` | stdlib-only stdio MCP server (`approve`) launched by `claude`, forwards to the daemon's unix socket (`BRIDGE_SOCKET`); `BridgeSocket` server; «Всегда» rule matrix, `updatedPermissions`, forgetting rules in `.claude/settings.local.json` |
+| `app/core/prompts.py` | `PromptService`: pending permission/question/plan prompts, cards, buttons, awaited text, timeouts, abandon on cancel; token → runtime registry |
+| `app/render/markdown.py`, `progress.py`, `keyboards.py`, `cards.py`, `tts.py` | fence-aware splitter and preview rules; progress line, tool trail, draft/progress content; inline keyboards and `callback_data` codec (topic card with switches and the «Ещё» page); permission (diff/masking), question and plan cards; prose extraction for TTS |
+| `bridge_preamble.md` | system-prompt preamble (Telegram context); glued with the persona (`SOUL_PATH` / `/soul`) into one `--append-system-prompt-file` per topic by `bridge/cli.py` |
+| `app/core/prefs.py`, `voice.py` | per-topic / per-user switches with defaults from `settings` (cycles for perm/model/effort); voice answer via `TTS_CMD` after the turn |
+| `app/core/liveview.py` | `LiveView`: draft (private) or progress message (groups), trailing-edge gate, 429, keepalive, delete after finals |
+| `app/core/actions.py` | topic actions shared by commands and buttons (new, stop, cancel, retry, continue, perm, model, effort, soul, voice, card switches and flag toggles, usage, sessions, topic from session, resume, branch, project, project new, rename, delete topic with confirmation) |
+| `app/transport/callbacks.py` | inline-button dispatcher → `actions`; stale buttons answer a toast |
+| `app/ingest/batcher.py`, `classify.py`, `pipeline.py`, `files.py`, `transcribe.py` | sliding-window batcher per topic; prompt/staging matrix, forward attribution, file-name sanitizing; turn assembly (downloads, image blocks, staging consumption, reply quote); inbox with TTL cleanup; external STT command |
+| `spikes/` | phase-0 experiment scripts against the real `claude` (documentation, not product code) |
+| `tests/` | e2e (real dispatcher + real Postgres + recording Telegram session), unit, `fake_claude/` |
+
+**Request flow**: Telegram update → `AccessMiddleware` → `DedupMiddleware` → router handler →
+`TopicService` → `Batcher` (300 ms window) → `Ingest.process_batch` (staging or turn) → `TopicRuntime.submit` → `ClaudeProcess` stdin → stream-json events → `LiveView` (drafts /
+progress edits, direct, ephemeral) and `TelegramSender.enqueue` → `outbox` table → `OutboxWorker` → Bot API
+(rich → plain fallback, `file://` → `FSInputFile`) → `message_links`. Buttons: callback → `callbacks.py` → `actions` / `prompts`.
+**Prompt flow**: `claude` calls `mcp__tgbridge__approve` → `mcp_server.py` → unix socket → `PromptService.handle` (token → runtime) → card via outbox → button / next text message / timeout → decision JSON back → `claude`.
+
+**Key patterns**: read `settings.X` at call time (tests override the module); never call the
+Bot API directly from handlers — enqueue through `TelegramSender`; strings live in `texts.py`;
+a message belongs to a topic only when `is_topic_message` is set; the claude process is only touched under
+`TopicRuntime._lock`; a turn ends only on a `result` event (EOF without it = crash → one silent retry);
+buttons first, slash commands as the text fallback — every action lives in `core/actions.py` and is reachable
+from both; button labels are words, never bare emoji (user decision); live-view updates bypass the outbox (ephemeral), everything the user keeps goes through it; outbox payloads
+are produced by `sender.dump_method` (drops aiogram `Default` sentinels, keeps discriminators); `mcp_server.py` must stay
+stdlib-only (it runs from the topic's cwd under the daemon's interpreter and never imports the app); a pending prompt is
+resolved exactly once (`PendingPrompt.future`), and every path that ends a turn calls `prompts.abandon`; `topics.settings`
+(jsonb) holds per-topic flags (`fork`, `title_implicit`) — merge through `TopicsRepo.update_settings`; the only direct Bot API
+calls outside the live view are `createForumTopic` / `deleteForumTopic` in `actions` (their result decides what happens next).
+
+**Claude Code facts that shape the code** (verified in phase 0): `claude -p` needs `--verbose`
+with stream-json; assistant events arrive one content block at a time; SIGINT ends the turn and
+the process; the permission prompt tool receives `{tool_name, input, tool_use_id}` and answers
+with `{"behavior": ...}` JSON; `updatedPermissions` with `localSettings` writes
+`.claude/settings.local.json`; `--rewind-files <uuid>` is a standalone operation (no prompt, one stdout line, needs a
+user-message uuid of the session); two stdin messages sent at once are merged into one turn.
 
 ## 1. Development cycle
 
@@ -8,7 +73,7 @@ Every task goes through the same loop:
 
 1. **Understand the task.** Read the relevant code and the existing specs in `specs/` before proposing anything. Reuse existing helpers and patterns; do not add a second way of doing something that already has one.
 2. **Spec first for anything non-trivial.** A multi-step change (new feature, migration, refactor touching several modules) gets a spec in `specs/` with phases before any code is written (§4). Small fixes do not need a spec.
-3. **Branch.** Never work on `<main>`. Create `claude/<topic>` from `<main>`, or from the currently open feature branch when the new work depends on it (§3).
+3. **Branch.** Never work on `main`. Create `claude/<topic>` from `main`, or from the currently open feature branch when the new work depends on it (§3).
 4. **Implement in phases.** Keep each phase small enough to review and to attribute a test failure to. After **any** code change run the full test suite (§2) and fix failures before moving on.
 5. **Update documentation in the same phase**: the spec's status line and phase table, the affected section of `CLAUDE.md`, and the `CHANGELOG.md` entry (§5).
 6. **Commit per phase with tests green, push the branch, open a PR** (§3). The user merges; do not merge yourself.
@@ -51,9 +116,9 @@ Every task goes through the same loop:
 
 ### Branches
 
-- **Never push to `<main>`**, even when the request is a bare "push". Every change goes through a feature branch and a pull request; the user merges.
-- Branch naming: `claude/<topic>`. Branch from `<main>` by default.
-- **Stacked branches**: if an earlier feature PR is still open and the new work builds on it, branch from that feature branch and open the PR with `--base <that branch>`. Check `gh pr list` before creating a branch. Do not rebase a stacked branch onto `<main>` unless asked.
+- **Never push to `main`**, even when the request is a bare "push". Every change goes through a feature branch and a pull request; the user merges.
+- Branch naming: `claude/<topic>`. Branch from `main` by default.
+- **Stacked branches**: if an earlier feature PR is still open and the new work builds on it, branch from that feature branch and open the PR with `--base <that branch>`. Check `gh pr list` before creating a branch. Do not rebase a stacked branch onto `main` unless asked.
 - One branch per spec; phases run sequentially on that branch. Follow-ups after review go into the same branch until it is merged.
 
 ### Commits

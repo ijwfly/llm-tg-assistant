@@ -1,0 +1,236 @@
+#!/usr/bin/env python3
+"""Fake `claude` CLI for e2e tests.
+
+Speaks the stream-json protocol on stdin/stdout the way the real CLI does (verified in
+specs/PHASE_0_SPIKE.md). Behaviour:
+
+* parses `--session-id`, `--resume`, `--fork-session`, `--mcp-config`, `--permission-prompt-tool`;
+* writes `{"argv": [...]}` and every stdin line as `{"stdin": ...}` to $FAKE_CLAUDE_LOG (JSONL);
+* emits `system/init` on start;
+* on each user message pops the next scenario file (`*.json`, sorted) from $FAKE_CLAUDE_SCENARIOS
+  and replays its `events`; an exhausted queue exits with code 3 (the error-path test);
+* scenario steps: a stream-json event (strings `{session_id}` are substituted), `{"delay": s}`,
+  or `{"prompt_tool": {"tool_name", "input", "tool_use_id"}}` which really calls the MCP server
+  from `--mcp-config` and logs `{"prompt_decision": ...}`, or `{"mcp_tool": {"name", "arguments"}}`
+  (logs `{"mcp_result": {text, is_error}}`; name `list` logs `{"mcp_tools": [...]}`);
+* SIGINT while replaying → `[Request interrupted by user]` + `result/error_during_execution`, exit 0.
+"""
+import json
+import os
+import signal
+import subprocess
+import sys
+import time
+import uuid
+from pathlib import Path
+
+LOG = os.environ.get("FAKE_CLAUDE_LOG")
+SCENARIOS = os.environ.get("FAKE_CLAUDE_SCENARIOS")
+
+
+def log(obj):
+    if LOG:
+        with open(LOG, "a") as f:
+            f.write(json.dumps(obj, ensure_ascii=False) + "\n")
+
+
+def emit(ev):
+    sys.stdout.write(json.dumps(ev, ensure_ascii=False) + "\n")
+    sys.stdout.flush()
+
+
+def parse_args(argv):
+    out = {"session_id": None, "resume": None, "fork": False, "mcp_config": None, "prompt_tool": None,
+           "permission_mode": "default", "model": "fake-model", "cwd": os.getcwd(), "rewind": None, "replay": False}
+    i = 0
+    while i < len(argv):
+        a = argv[i]
+        nxt = argv[i + 1] if i + 1 < len(argv) else None
+        if a == "--session-id":
+            out["session_id"] = nxt; i += 1
+        elif a == "--resume":
+            out["resume"] = nxt; i += 1
+        elif a == "--fork-session":
+            out["fork"] = True
+        elif a == "--mcp-config":
+            out["mcp_config"] = nxt; i += 1
+        elif a == "--permission-prompt-tool":
+            out["prompt_tool"] = nxt; i += 1
+        elif a == "--permission-mode":
+            out["permission_mode"] = nxt; i += 1
+        elif a == "--model":
+            out["model"] = nxt; i += 1
+        elif a == "--rewind-files":
+            out["rewind"] = nxt; i += 1
+        elif a == "--replay-user-messages":
+            out["replay"] = True
+        i += 1
+    return out
+
+
+def fill(obj, ctx):
+    if isinstance(obj, str):
+        for k, v in ctx.items():
+            obj = obj.replace("{" + k + "}", str(v))
+        return obj
+    if isinstance(obj, list):
+        return [fill(x, ctx) for x in obj]
+    if isinstance(obj, dict):
+        return {k: fill(v, ctx) for k, v in obj.items()}
+    return obj
+
+
+def pop_scenario():
+    if not SCENARIOS:
+        return None
+    files = sorted(p for p in Path(SCENARIOS).glob("*.json"))
+    if not files:
+        return None
+    path = files[0]
+    data = json.loads(path.read_text())
+    path.rename(path.with_suffix(".done"))
+    return data
+
+
+class Mcp:
+    """Minimal stdio MCP client for the bridge's permission prompt tool."""
+
+    def __init__(self, config_arg, tool_full_name):
+        cfg = json.loads(Path(config_arg).read_text()) if os.path.exists(config_arg) else json.loads(config_arg)
+        name, server = next(iter(cfg["mcpServers"].items()))
+        env = dict(os.environ, **server.get("env", {}))
+        self.proc = subprocess.Popen([server["command"], *server.get("args", [])], stdin=subprocess.PIPE,
+                                     stdout=subprocess.PIPE, text=True, env=env, cwd=os.getcwd())
+        self.tool = tool_full_name.split("__", 2)[-1] if tool_full_name else "approve"
+        self._id = 0
+        self.request("initialize", {"protocolVersion": "2025-11-25", "capabilities": {},
+                                    "clientInfo": {"name": "fake-claude", "version": "0"}})
+        self.notify("notifications/initialized")
+
+    def _send(self, msg):
+        self.proc.stdin.write(json.dumps(msg) + "\n")
+        self.proc.stdin.flush()
+
+    def notify(self, method, params=None):
+        self._send({"jsonrpc": "2.0", "method": method, "params": params or {}})
+
+    def request(self, method, params):
+        self._id += 1
+        self._send({"jsonrpc": "2.0", "id": self._id, "method": method, "params": params})
+        while True:
+            line = self.proc.stdout.readline()
+            if not line:
+                raise RuntimeError("mcp server closed")
+            msg = json.loads(line)
+            if msg.get("id") == self._id:
+                return msg
+
+    def call_tool(self, arguments, name=None):
+        resp = self.request("tools/call", {"name": name or self.tool, "arguments": arguments,
+                                           "_meta": {"claudecode/toolUseId": arguments.get("tool_use_id")}})
+        result = resp.get("result", {})
+        content = result.get("content", [])
+        text = next((c.get("text") for c in content if c.get("type") == "text"), "{}")
+        if name and name != self.tool:
+            return {"text": text, "is_error": bool(result.get("isError")), "error": resp.get("error")}
+        try:
+            return json.loads(text)
+        except json.JSONDecodeError:
+            return {"raw": text}
+
+    def list_tools(self):
+        return [t["name"] for t in self.request("tools/list", {}).get("result", {}).get("tools", [])]
+
+    def close(self):
+        try:
+            self.proc.stdin.close()
+            self.proc.wait(timeout=5)
+        except Exception:
+            self.proc.kill()
+
+
+def main():
+    args = parse_args(sys.argv[1:])
+    log({"argv": sys.argv[1:], "cwd": os.getcwd(), "env": {k: v for k, v in os.environ.items()
+                                                            if k.startswith(("CLAUDE", "TGBRIDGE", "FAKE_CLAUDE"))}})
+    session_id = args["session_id"] or args["resume"] or str(uuid.uuid4())
+    if args["rewind"]:   # standalone operation (verified 2026-09-03): one line on stdout, no prompt, exit 0
+        sys.stdout.write(f"Files rewound to state at message {args['rewind']}\n")
+        sys.stdout.flush()
+        log({"rewind": args["rewind"], "resume": args["resume"]})
+        sys.exit(0)
+    if args["fork"]:
+        session_id = str(uuid.uuid4())
+    ctx = {"session_id": session_id, "cwd": args["cwd"]}
+    state = {"in_turn": False}
+
+    def on_sigint(signum, frame):
+        if state["in_turn"]:
+            emit({"type": "user", "message": {"role": "user", "content": [{"type": "text", "text": "[Request interrupted by user]"}]},
+                  "session_id": session_id})
+            emit({"type": "result", "subtype": "error_during_execution", "is_error": True, "duration_ms": 1,
+                  "num_turns": 1, "session_id": session_id, "stop_reason": "tool_use", "permission_denials": []})
+        log({"signal": "SIGINT", "in_turn": state["in_turn"]})
+        sys.exit(0)
+
+    signal.signal(signal.SIGINT, on_sigint)
+
+    emit({"type": "system", "subtype": "init", "cwd": args["cwd"], "session_id": session_id,
+          "tools": ["Bash", "Read", "Edit", "Write", "AskUserQuestion", "ExitPlanMode"],
+          "mcp_servers": [{"name": "tgbridge", "status": "connected"}] if args["mcp_config"] else [],
+          "model": args["model"], "permissionMode": args["permission_mode"], "slash_commands": ["compact", "clear"],
+          "claude_code_version": "fake", "uuid": str(uuid.uuid4())})
+
+    mcp = None
+    for line in sys.stdin:
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            msg = json.loads(line)
+        except json.JSONDecodeError:
+            log({"stdin_bad": line})
+            continue
+        log({"stdin": msg})
+        if msg.get("type") != "user":
+            continue
+        if args["replay"]:   # the CLI echoes the user message back with its uuid (--replay-user-messages)
+            echo_uuid = str(uuid.uuid4())
+            emit({"type": "user", "uuid": echo_uuid, "session_id": session_id, "message": msg["message"]})
+            log({"user_uuid": echo_uuid})
+        scenario = pop_scenario()
+        if scenario is None:
+            sys.stderr.write("fake claude: no scenario left\n")
+            sys.stderr.flush()
+            sys.exit(3)
+        state["in_turn"] = True
+        for step in scenario.get("events", []):
+            if "delay" in step and len(step) == 1:
+                time.sleep(float(step["delay"]))
+            elif "prompt_tool" in step:
+                if mcp is None:
+                    mcp = Mcp(args["mcp_config"], args["prompt_tool"])
+                decision = mcp.call_tool(fill(step["prompt_tool"], ctx))
+                log({"prompt_decision": decision, "tool_use_id": step["prompt_tool"].get("tool_use_id")})
+            elif "mcp_tool" in step:
+                if mcp is None:
+                    mcp = Mcp(args["mcp_config"], args["prompt_tool"])
+                spec = step["mcp_tool"]
+                if spec.get("name") == "list":
+                    log({"mcp_tools": mcp.list_tools()})
+                else:
+                    log({"mcp_result": mcp.call_tool(fill(spec.get("arguments") or {}, ctx), name=spec["name"])})
+            elif "exit" in step:
+                sys.stderr.write(str(step.get("stderr", "fake claude crashed")) + "\n")
+                sys.stderr.flush()
+                sys.exit(int(step["exit"]))
+            else:
+                emit(fill(step, ctx))
+        state["in_turn"] = False
+    if mcp:
+        mcp.close()
+    log({"eof": True})
+
+
+if __name__ == "__main__":
+    main()

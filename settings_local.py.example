@@ -1,0 +1,43 @@
+# Copy to settings_local.py and fill in. Every value here overrides settings.py.
+# settings_local.py is gitignored; never commit tokens.
+
+# --- Required -----------------------------------------------------------------
+# TELEGRAM_BOT_TOKEN = "123456:ABC..."
+# ALLOWED_USERS = [123456789]            # /whoami shows your id
+# DATABASE_URL = "postgresql://app:app@localhost:5432/app"
+
+# --- Optional -----------------------------------------------------------------
+# ALLOWED_CHATS = []                     # empty = anywhere an allowed user writes
+# NOTIFY_CHAT = "123456789"              # or "-1001234567890:42" for a forum topic
+# WORK_ROOT = "/work"
+# DEFAULT_CWD = "/work/my-project"
+# PROJECTS = {"app": "/work/my-project", "infra": "/work/infra"}
+# NEW_PROJECTS_DIR = "/work"               # /project new <имя> creates folders here (default: WORK_ROOT)
+
+# --- Claude Code ----------------------------------------------------------------
+# CLAUDE_BIN = "claude"
+# CLAUDE_CONFIG_DIR = "/home/app/.claude"
+# DEFAULT_PERMISSION_MODE = "prompt"     # prompt | acceptEdits | plan | auto | dontAsk | bypass
+# ALLOW_BYPASS = False
+# DEFAULT_MODEL = None                   # e.g. "sonnet"
+# DEFAULT_EFFORT = None                  # low | medium | high | xhigh | max
+# MODEL_CHOICES = ["sonnet", "opus", "haiku"]   # the «Модель» button on the topic card cycles through these
+# SOUL_PATH = "/home/app/.config/llm-tg-assistant/SOUL.md"   # persona appended to the system prompt; /soul overrides per topic
+# BRIDGE_PREAMBLE_PATH = None            # None -> bridge_preamble.md from the repository
+# BRIDGE_SEND_FILE_TOOL = True           # the model can send files to the topic
+# VERBOSE_TOOL_OUTPUT = False            # default for «Вывод инструментов» on the card
+# FORWARD_SUBAGENT_TEXT = False          # subagent text in <details>
+# FILE_CHECKPOINTING = False             # «Откатить файлы» on the card (Claude Code file checkpoints)
+
+# --- Voice ------------------------------------------------------------------------
+# TRANSCRIBE_CMD = "opusdec --quiet --rate 16000 --force-wav {file} {wav} && whisper-cli -m model.bin -f {wav} -nt"
+# TTS_CMD = "say -o {wav} --data-format=LEI16@22050 -f {text_file} && ffmpeg -y -loglevel error -i {wav} -c:a libopus {out}"  # macOS example
+# TTS_TIMEOUT = 120
+
+# --- Permissions ------------------------------------------------------------------
+# BRIDGE_SOCKET = "/tmp/tgbridge.sock"   # unix socket between the claude prompt tool and the bot
+# PERMISSION_TIMEOUT_SECS = 600          # unanswered permission card -> deny
+# QUESTION_TIMEOUT_SECS = 1800           # unanswered question / plan card -> deny
+
+# --- Features -------------------------------------------------------------------
+# LOG_LEVEL = "DEBUG"

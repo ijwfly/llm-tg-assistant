@@ -1,0 +1,10 @@
+.git
+.venv
+__pycache__
+*.pyc
+.pytest_cache
+data
+settings_local.py
+.env
+docker-compose.override.yml
+spikes/spike_out
