@@ -145,7 +145,8 @@ class Ingest:
         if "edited" in flags:
             await self.app.sender.send_text(topic["chat_id"], topic["thread_id"], texts.EDIT_SEEN, topic_id=topic["id"])
         content = await self.assemble(topic, anchor, items)
-        await actions.submit_turn(self.app, topic, TurnRequest(content=content))
+        await actions.submit_turn(self.app, topic, TurnRequest(
+            content=content, anchor_message_id=anchor.message_id, react_on_error=user_settings.get("reactions", True)))
 
     async def assemble(self, topic: dict, anchor: Message, items: list[Item]) -> list[dict]:
         """Content blocks: reply quote → staged items (by group) → batch items (by message_id)."""

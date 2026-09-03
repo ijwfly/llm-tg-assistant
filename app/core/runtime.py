@@ -17,7 +17,9 @@ from app.core import prefs
 from app.core.liveview import LiveView
 from app.core.voice import voice_for_turn
 from app.render import keyboards
+from app.render import cards
 from app.render.markdown import RICH_LIMIT
+from app.render.progress import tool_detail
 from app.render.progress import ProgressState, draft_markdown, progress_text
 from app.transport import texts
 
@@ -29,6 +31,8 @@ class TurnRequest:
     content: list[dict]                 # content blocks for the user message
     turn_id: int | None = None          # set when re-running an existing turn row (/retry creates a new one)
     quiet: bool = False                 # housekeeping turn (/rename): no "no text" verdict
+    anchor_message_id: int | None = None   # the user's message to react on when the turn fails
+    react_on_error: bool = True
 
 
 @dataclass
@@ -53,6 +57,7 @@ class TurnState:
     topic: dict = field(default_factory=dict)
     model: str | None = None            # from system/init
     spoken: list[str] = field(default_factory=list)   # text segments sent, for the voice answer
+    tools: dict = field(default_factory=dict)          # tool_use_id -> (name, detail) for verbose output
 
     @property
     def preview_text(self) -> str:
@@ -293,6 +298,9 @@ class TopicRuntime:
                 state.live.touch()
             elif isinstance(e, ev.TextBlock):
                 state.stream_buf = ""
+                if e.parent_tool_use_id is not None and e.text.strip() and settings.FORWARD_SUBAGENT_TEXT:
+                    await self.app.sender.send_markdown(self.chat_id, self.thread_id, cards.subagent_card(e.text),
+                                                        topic_id=self.topic_id, turn_id=state.turn_id, role="subagent")
                 if e.parent_tool_use_id is None and e.text.strip():
                     state.pending = (state.pending + "\n\n" + e.text) if state.pending else e.text
                     if len(state.pending) >= settings.MIN_SEGMENT_CHARS:
@@ -301,7 +309,15 @@ class TopicRuntime:
                         state.live.touch()
             elif isinstance(e, ev.ToolUse):
                 state.progress.add_tool(e.name, e.input, subagent=e.parent_tool_use_id is not None)
+                state.tools[e.id] = (e.name, tool_detail(e.name, e.input))
                 state.live.touch()
+            elif isinstance(e, ev.ToolResult):
+                if e.parent_tool_use_id is None and prefs.topic_flag(state.topic, "verbose_tools"):
+                    name, detail = state.tools.get(e.tool_use_id, ("Инструмент", None))
+                    await self._flush_text(state)   # keep the answer's order: text so far, then the tool output
+                    await self.app.sender.send_markdown(self.chat_id, self.thread_id,
+                                                        cards.tool_output_card(name, detail, e.content, e.is_error),
+                                                        topic_id=self.topic_id, turn_id=state.turn_id, role="tool")
             elif isinstance(e, ev.PermissionDenied):
                 state.denials.append(e.tool_name)
             elif isinstance(e, ev.RateLimit):
@@ -353,6 +369,8 @@ class TopicRuntime:
             if state.got_init:  # the CLI wrote the transcript, so the session can be resumed
                 await store.topics.update(tid, session_resumable=True)
             status = "cancelled" if state.cancelled else "timeout"
+            if state.timed_out:
+                await self._react_error(state)
             await store.turns.finish(state.turn_id, status=status, result_subtype=r.subtype if r else None)
             await self._drop_dead_process()
             await send(texts.CANCELLED if state.cancelled else texts.TURN_TIMEOUT, keyboards.retry_kb(tid))
@@ -366,6 +384,8 @@ class TopicRuntime:
                                  error=(r.result if r.is_error else None), model=state.model)
         self.last_turn = {"duration_ms": r.duration_ms, "cost_usd": r.total_cost_usd, "num_turns": r.num_turns,
                           "usage": r.usage}
+        if r.is_error:
+            await self._react_error(state)
         if r.subtype in ("error_max_turns", "error_max_budget_usd"):
             await send(texts.TURN_LIMIT.format(what="ходов" if "turns" in r.subtype else "бюджета"),
                        keyboards.continue_kb(tid))
@@ -407,7 +427,13 @@ class TopicRuntime:
             self.app.prompts.unregister(self.prompt_token)
             self.prompt_token = None
 
+    async def _react_error(self, state: TurnState) -> None:
+        """👾 on the user's message when the turn failed (PROJECT_SPEC 4.4.4)."""
+        if settings.REACTIONS and state.request.react_on_error and state.request.anchor_message_id:
+            await self.app.sender.react(self.chat_id, state.request.anchor_message_id, "👾", topic_id=self.topic_id)
+
     async def _finish_crash(self, state: TurnState, code: int | None, stderr_tail) -> None:
+        await self._react_error(state)
         await self.app.store.turns.finish(state.turn_id, status="crashed", error="\n".join(stderr_tail)[:2000])
         tail = "\n".join(stderr_tail).strip()
         await self.app.sender.send_text(self.chat_id, self.thread_id, texts.crash(code, tail),

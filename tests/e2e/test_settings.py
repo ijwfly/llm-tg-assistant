@@ -65,13 +65,13 @@ async def test_more_page_toggles_topic_and_user_flags(app, spy, fake_claude):
     await run(app, callback_update("page:1:more", message_id=500))
     more = spy.calls("EditMessageText")[-1]
     assert labels(more) == ["Превью ответа: вкл", "Размышления: вкл", "Статистика хода: выкл", "Голосом: выкл",
-                            "Голос = вопрос: вкл", "Форвард = вопрос: выкл", "Реакции: вкл", "Назад"]
+                            "Вывод инструментов: выкл", "Голос = вопрос: вкл", "Форвард = вопрос: выкл", "Реакции: вкл", "Назад"]
     await run(app, callback_update("tgl:1:stream_preview", message_id=500))
     edit = spy.calls("EditMessageText")[-1]
     assert labels(edit)[0] == "Превью ответа: выкл" and labels(edit)[-1] == "Назад"
     assert (await app.topics.list_all())[0]["settings"]["stream_preview"] is False
     await run(app, callback_update("tgl:1:reactions", message_id=500))
-    assert labels(spy.calls("EditMessageText")[-1])[6] == "Реакции: выкл"
+    assert labels(spy.calls("EditMessageText")[-1])[7] == "Реакции: выкл"
     assert (await app.store.users.settings(1))["reactions"] is False
     await run(app, callback_update("tgl:1:show_turn_stats", message_id=500))
     assert (await app.topics.list_all())[0]["settings"]["show_turn_stats"] is True

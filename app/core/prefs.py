@@ -9,6 +9,7 @@ TOPIC_FLAGS = {
     "thinking_preview": lambda: settings.THINKING_PREVIEW,
     "show_turn_stats": lambda: settings.SHOW_TURN_STATS,
     "voice": lambda: False,
+    "verbose_tools": lambda: settings.VERBOSE_TOOL_OUTPUT,
 }
 # user flags live in users.settings
 USER_FLAGS = {
@@ -19,7 +20,7 @@ USER_FLAGS = {
 FLAG_LABELS = {
     "stream_preview": "Превью ответа", "thinking_preview": "Размышления", "show_turn_stats": "Статистика хода",
     "voice": "Голосом", "voice_as_prompt": "Голос = вопрос", "forward_as_prompt": "Форвард = вопрос",
-    "reactions": "Реакции",
+    "reactions": "Реакции", "verbose_tools": "Вывод инструментов",
 }
 EFFORTS = ["low", "medium", "high", "xhigh", "max"]
 DEFAULT = "default"

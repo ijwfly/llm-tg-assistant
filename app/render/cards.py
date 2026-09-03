@@ -110,6 +110,26 @@ def permission_card(tool_name: str, tool_input: dict, cwd: str | None = None) ->
     return f"{head}\n" + fence(text, "json")
 
 
+TOOL_OUTPUT_LIMIT = 3500
+
+
+def tool_output_card(name: str, detail: str | None, content, is_error: bool) -> str:
+    """A collapsed <details> block with a tool result (topic flag «Вывод инструментов»)."""
+    if isinstance(content, list):
+        text = "\n".join(str(b.get("text", "")) if isinstance(b, dict) else str(b) for b in content)
+    else:
+        text = str(content or "")
+    text = text.strip()
+    if len(text) > TOOL_OUTPUT_LIMIT:
+        text = text[:TOOL_OUTPUT_LIMIT] + "\n… (обрезано)"
+    summary = f"{'⚠️ ' if is_error else ''}{name}" + (f" {detail}" if detail else "")
+    return f"<details><summary>{summary}</summary>\n\n{fence(text or '(пусто)')}\n\n</details>"
+
+
+def subagent_card(text: str) -> str:
+    return f"<details><summary>Подагент</summary>\n\n{text.strip()}\n\n</details>"
+
+
 def option_label(option: dict) -> str:
     label = str(option.get("label") or "")
     desc = str(option.get("description") or "")
