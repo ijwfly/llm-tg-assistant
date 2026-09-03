@@ -60,6 +60,12 @@ All notable changes to this project are documented here. The format follows
   (works in private chats with topics); `/rename` renames topic and session; topics created without
   a name are named after the first prompt; `/status` shows the session title; card buttons
   `📜 Сессии` / `🌿 Ветка`. See `specs/PHASE_6_SESSIONS.md`.
+- **Session discovery (phase 6b)** — a topic is bound to a folder; `/sessions` shows every Claude
+  Code session on the machine inside `WORK_ROOT` (own folder first, terminal sessions included) with
+  «Продолжить здесь <id>» for the topic's folder and «Новая тема <id>» to open a topic under another
+  session's folder; `/project new <имя>` creates a folder (`NEW_PROJECTS_DIR`, default `WORK_ROOT`),
+  a session and a topic; past sessions of a topic are labelled «эта тема, раньше»; all inline
+  buttons are labelled with words instead of emoji. See `specs/PHASE_6B_SESSION_DISCOVERY.md`.
 - **Test infrastructure** — `scripts/test.sh` with a disposable Postgres, recording Telegram
   session with failure injection, spy, update builders, fake `claude` for the coming phases.
   See `specs/E2E_TESTS.md`.

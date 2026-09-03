@@ -12,6 +12,7 @@
 # WORK_ROOT = "/work"
 # DEFAULT_CWD = "/work/my-project"
 # PROJECTS = {"app": "/work/my-project", "infra": "/work/infra"}
+# NEW_PROJECTS_DIR = "/work"               # /project new <имя> creates folders here (default: WORK_ROOT)
 
 # --- Claude Code ----------------------------------------------------------------
 # CLAUDE_BIN = "claude"
