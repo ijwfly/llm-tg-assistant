@@ -1,4 +1,5 @@
-from tests.support.helpers import run
+import settings
+from tests.support.helpers import feed, run, wait_for_text
 from tests.support.updates import text_update
 
 
@@ -11,8 +12,8 @@ async def test_whoami_shows_ids(app, spy):
 async def test_status_creates_topic_with_default_cwd(app, spy):
     await run(app, text_update("/status"))
     topics = await app.topics.list_all()
-    assert len(topics) == 1 and topics[0]["cwd"] == "/work" and topics[0]["thread_id"] is None
-    spy.assert_shown_text_contains("Директория   /work")
+    assert len(topics) == 1 and topics[0]["cwd"] == settings.DEFAULT_CWD and topics[0]["thread_id"] is None
+    spy.assert_shown_text_contains("Директория   " + settings.DEFAULT_CWD)
     assert topics[0]["permission_mode"] == "prompt"
 
 
@@ -21,7 +22,7 @@ async def test_topics_lists_known_topics(app, spy):
     assert spy.last_text() == "Пока пусто."
     await run(app, text_update("/status"))
     await run(app, text_update("/topics"))
-    assert "/work" in spy.last_text()
+    assert settings.DEFAULT_CWD in spy.last_text()
 
 
 async def test_forum_topic_message_creates_topic_bound_to_thread(app, spy):
@@ -45,9 +46,10 @@ async def test_start_is_help(app, spy):
     spy.assert_shown_text_contains("Каждая тема — своя сессия")
 
 
-async def test_plain_text_registers_topic_and_answers_placeholder(app, spy):
-    await run(app, text_update("привет"))
+async def test_plain_text_registers_topic_and_user(app, spy, fake_claude):
+    fake_claude.text_turn("привет-привет")
+    await feed(app, text_update("привет"))
+    await wait_for_text(spy, "привет-привет")
     assert len(await app.topics.list_all()) == 1
-    spy.assert_shown_text_contains("🚧")
     user = await app.store.users.get(1)
     assert user and user["username"] == "tester"

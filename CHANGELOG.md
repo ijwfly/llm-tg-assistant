@@ -17,6 +17,12 @@ All notable changes to this project are documented here. The format follows
   at-least-once delivery ordered per topic and 429-aware retries, `/help`, `/whoami`,
   `/topics`, `/status`, startup/shutdown notices to `NOTIFY_CHAT`, docker-compose
   (bot + Postgres) with dev override example. See `specs/PHASE_1_SKELETON.md`.
+- **Turns (phase 2)** — a message in a topic is a Claude Code turn: one long-lived
+  `claude -p` stream-json process per topic, resumed after idle/stop/cancel, answers delivered
+  as rich markdown (plain fallback), end-of-turn verdicts (`✔️`, `⚠️`, `🔒`, `🧹`, `⏹`), cancel via
+  SIGINT, turn timeout, silent retry on crash, `/new`, `/clear`, `/stop`, `/cancel`, `/retry`,
+  `/cd`, `/go`, extended `/status`, reply quoting, per-topic turn queue with a single hint.
+  See `specs/PHASE_2_TURNS.md`.
 - **Test infrastructure** — `scripts/test.sh` with a disposable Postgres, recording Telegram
   session with failure injection, spy, update builders, fake `claude` for the coming phases.
   See `specs/E2E_TESTS.md`.

@@ -1,7 +1,7 @@
 import asyncio
 
-from aiogram.exceptions import TelegramNetworkError, TelegramRetryAfter
-from aiogram.methods import SendMessage
+from aiogram.exceptions import TelegramBadRequest, TelegramNetworkError, TelegramRetryAfter
+from aiogram.methods import SendMessage, SendRichMessage
 
 import settings
 from tests.support.helpers import run, wait_outbox_idle
@@ -62,3 +62,17 @@ async def test_stale_row_is_marked_failed(app, spy, session):
     row = await app.db.fetchrow("SELECT * FROM outbox")
     assert row["status"] == "failed" and "boom" in row["last_error"]
     assert spy.sent_texts() == []
+
+
+async def test_rejected_rich_message_falls_back_to_plain_text(app, spy, session):
+    session.fail_next("SendRichMessage", TelegramBadRequest(method=SendRichMessage(chat_id=1, rich_message={"markdown": "x"}),
+                                                              message="Bad Request: can't parse rich message"))
+    topic = await app.topics.get_or_create(__import__("app.core.topics", fromlist=["TopicRef"]).TopicRef(1, None))
+    await app.sender.send_markdown(1, None, "# Заголовок\n\nтекст", topic_id=topic["id"], turn_id=None, role="assistant")
+    await wait_outbox_idle(app)
+    assert spy.calls("SendRichMessage") == []
+    assert spy.sent_texts(chat_id=1) == ["# Заголовок\n\nтекст"]
+    row = await app.db.fetchrow("SELECT * FROM outbox")
+    assert row["status"] == "delivered" and row["delivered_message_id"] == 1000
+    link = await app.store.links.get(1, 1000)
+    assert link and link["topic_id"] == topic["id"] and link["role"] == "assistant"

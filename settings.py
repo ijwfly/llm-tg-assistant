@@ -30,6 +30,21 @@ DEFAULT_PERMISSION_MODE: str = os.environ.get("DEFAULT_PERMISSION_MODE", "prompt
 ALLOW_BYPASS: bool = False                                # allow /perm bypass (full shell from the phone)
 DEFAULT_MODEL: str | None = None
 DEFAULT_EFFORT: str | None = None
+FALLBACK_MODEL: str | None = None
+MAX_BUDGET_USD_PER_TURN: float | None = None
+ALLOWED_TOOLS: list[str] = []                             # passed as --allowed-tools (permission rule syntax)
+DISALLOWED_TOOLS: list[str] = []                          # passed as --disallowed-tools
+CLAUDE_SETTINGS: str | None = None                        # --settings <file or JSON>
+ADD_DIRS: list[str] = []                                  # --add-dir, extra directories the model may touch
+CLAUDE_ENV: dict[str, str] = {}                           # extra environment for the claude process
+
+# --- Turns / processes ------------------------------------------------------------
+IDLE_TIMEOUT_SECS: float = 1800.0    # idle process is stopped after this; next turn resumes the session
+TURN_TIMEOUT_SECS: float = 3600.0    # a turn longer than this is interrupted
+TURN_QUEUE_MAX: int = 32             # messages waiting behind a running turn, per topic
+PROCESS_STOP_GRACE_SECS: float = 10.0
+TYPING_INTERVAL: float = 4.0         # sendChatAction cadence while a turn runs
+SHOW_TURN_STATS: bool = False        # italic "1 м 12 с · $0.08 · 3 шага" under the answer
 
 # --- Outbox / delivery ----------------------------------------------------------
 OUTBOX_POLL_INTERVAL: float = 0.5        # seconds between idle polls of the outbox

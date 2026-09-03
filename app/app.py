@@ -1,4 +1,4 @@
-"""Application object: wires store, sender, outbox worker, topics and the dispatcher."""
+"""Application object: wires store, sender, outbox worker, topics, runtimes and the dispatcher."""
 from __future__ import annotations
 
 import logging
@@ -7,6 +7,7 @@ from aiogram import Bot
 from aiogram.methods import SetMyCommands
 
 import settings
+from app.core.runtime import RuntimeRegistry
 from app.core.topics import TopicService
 from app.store.db import Database
 from app.store.repos import Store
@@ -15,7 +16,7 @@ from app.transport.bot import BOT_COMMANDS, build_dispatcher
 from app.transport.outbox import OutboxWorker
 from app.transport.sender import TelegramSender
 
-VERSION = "0.1.0-phase1"
+VERSION = "0.2.0-phase2"
 log = logging.getLogger(__name__)
 
 
@@ -31,12 +32,15 @@ class App:
         self.bot = bot
         self.db = db
         self.store = Store(db)
-        self.outbox = OutboxWorker(bot, self.store.outbox)
+        self.outbox = OutboxWorker(bot, self.store.outbox, self.store.links)
         self.sender = TelegramSender(self.store, self.outbox.wake)
         self.topics = TopicService(self.store)
+        self.runtimes = RuntimeRegistry(self)
         self.dp = build_dispatcher(self, self.store)
+        self._stopped = False
 
     async def start(self) -> None:
+        self._stopped = False
         await self.outbox.start()
         notify = parse_notify_chat(settings.NOTIFY_CHAT)
         if notify:
@@ -47,6 +51,10 @@ class App:
         log.info("app started")
 
     async def stop(self) -> None:
+        if self._stopped:
+            return
+        self._stopped = True
+        await self.runtimes.shutdown_all()
         notify = parse_notify_chat(settings.NOTIFY_CHAT)
         if notify:
             await self.sender.send_text(notify[0], notify[1], texts.SHUTDOWN)

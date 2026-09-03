@@ -1,6 +1,7 @@
 """Repositories: thin, explicit SQL over the Database wrapper."""
 from __future__ import annotations
 
+import uuid
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from typing import Any
@@ -38,15 +39,18 @@ class TopicsRepo:
     async def get_or_create(self, chat_id: int, thread_id: int | None, *, cwd: str, title: str | None,
                             permission_mode: str | None, model: str | None, effort: str | None) -> dict:
         return _row(await self.db.fetchrow(
-            """INSERT INTO topics (chat_id, thread_id, title, cwd, permission_mode, model, effort)
-               VALUES ($1, $2, $3, $4, $5, $6, $7)
+            """INSERT INTO topics (chat_id, thread_id, title, cwd, permission_mode, model, effort, session_id)
+               VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
                ON CONFLICT (chat_id, COALESCE(thread_id, 0)) DO UPDATE
                  SET last_activity_at = now(),
                      title = COALESCE(EXCLUDED.title, topics.title)
-               RETURNING *""", chat_id, thread_id, title, cwd, permission_mode, model, effort))
+               RETURNING *""", chat_id, thread_id, title, cwd, permission_mode, model, effort, uuid.uuid4()))
 
     async def list_all(self) -> list[dict]:
         return [dict(r) for r in await self.db.fetch("SELECT * FROM topics ORDER BY last_activity_at DESC")]
+
+    async def get_by_id(self, topic_id: int) -> dict | None:
+        return _row(await self.db.fetchrow("SELECT * FROM topics WHERE id = $1", topic_id))
 
     async def update(self, topic_id: int, **fields: Any) -> dict:
         if not fields:
@@ -66,6 +70,36 @@ class OutboxRow:
     payload: dict
     attempts: int
     created_at: datetime
+    topic_id: int | None = None
+    turn_id: int | None = None
+    role: str | None = None
+
+
+class TurnsRepo:
+    def __init__(self, db: Database):
+        self.db = db
+
+    async def create(self, topic_id: int, prompt: list[dict]) -> dict:
+        return _row(await self.db.fetchrow(
+            "INSERT INTO turns (topic_id, prompt) VALUES ($1, $2) RETURNING *", topic_id, prompt))
+
+    async def set_running(self, turn_id: int) -> None:
+        await self.db.execute("UPDATE turns SET status = 'running', started_at = now() WHERE id = $1", turn_id)
+
+    async def finish(self, turn_id: int, *, status: str, result_subtype: str | None = None,
+                     duration_ms: int | None = None, num_turns: int | None = None, cost_usd: float | None = None,
+                     usage: dict | None = None, error: str | None = None) -> None:
+        await self.db.execute(
+            """UPDATE turns SET status = $2, result_subtype = $3, duration_ms = $4, num_turns = $5,
+                                cost_usd = $6, usage = $7, error = $8, finished_at = now()
+               WHERE id = $1""", turn_id, status, result_subtype, duration_ms, num_turns, cost_usd, usage, error)
+
+    async def get(self, turn_id: int) -> dict | None:
+        return _row(await self.db.fetchrow("SELECT * FROM turns WHERE id = $1", turn_id))
+
+    async def last_for_topic(self, topic_id: int) -> dict | None:
+        return _row(await self.db.fetchrow(
+            "SELECT * FROM turns WHERE topic_id = $1 ORDER BY id DESC LIMIT 1", topic_id))
 
 
 # The head of every topic's queue (oldest pending row per topic_key). Delivery order inside a
@@ -73,7 +107,8 @@ class OutboxRow:
 # head is chosen, never before.
 HEAD_OF_QUEUE = """
     SELECT * FROM (
-        SELECT DISTINCT ON (topic_key) id, topic_key, method, payload, attempts, created_at, next_attempt_at
+        SELECT DISTINCT ON (topic_key) id, topic_key, method, payload, attempts, created_at, next_attempt_at,
+                                       topic_id, turn_id, role
         FROM outbox
         WHERE status = 'pending' AND NOT (topic_key = ANY($1::text[]))
         ORDER BY topic_key, id
@@ -84,10 +119,12 @@ class OutboxRepo:
     def __init__(self, db: Database):
         self.db = db
 
-    async def enqueue(self, topic_key: str, method: str, payload: dict) -> int:
+    async def enqueue(self, topic_key: str, method: str, payload: dict, *, topic_id: int | None = None,
+                      turn_id: int | None = None, role: str | None = None) -> int:
         return await self.db.fetchval(
-            "INSERT INTO outbox (topic_key, method, payload) VALUES ($1, $2, $3) RETURNING id",
-            topic_key, method, payload)
+            """INSERT INTO outbox (topic_key, method, payload, topic_id, turn_id, role)
+               VALUES ($1, $2, $3, $4, $5, $6) RETURNING id""",
+            topic_key, method, payload, topic_id, turn_id, role)
 
     async def next_batch(self, exclude_keys: set[str]) -> list[OutboxRow]:
         """One due pending row per topic_key, oldest first, skipping keys currently in flight."""
@@ -157,5 +194,6 @@ class Store:
         self.users = UsersRepo(db)
         self.topics = TopicsRepo(db)
         self.outbox = OutboxRepo(db)
+        self.turns = TurnsRepo(db)
         self.updates = UpdatesRepo(db)
         self.links = MessageLinksRepo(db)

@@ -23,15 +23,22 @@ settings.OUTBOX_RETRY_BASE_SECS = 0.02
 settings.OUTBOX_RETRY_MAX_SECS = 0.2
 settings.OUTBOX_MAX_AGE_SECS = 600.0
 settings.SHUTDOWN_DRAIN_SECS = 1.0
+settings.IDLE_TIMEOUT_SECS = 60.0
+settings.TURN_TIMEOUT_SECS = 30.0
+settings.TYPING_INTERVAL = 0.2
+settings.PROCESS_STOP_GRACE_SECS = 2.0
+settings.CLAUDE_BIN = str(ROOT / "tests" / "fake_claude" / "claude")
+settings.CLAUDE_CONFIG_DIR = None
 
 from aiogram import Bot  # noqa: E402
 
 from app.app import App  # noqa: E402
 from app.store.db import Database  # noqa: E402
+from tests.support.fake_claude import FakeClaude  # noqa: E402
 from tests.support.session import RecordingSession  # noqa: E402
 from tests.support.spy import TelegramSpy  # noqa: E402
 
-TABLES = ["message_links", "outbox", "processed_updates", "topics", "users"]
+TABLES = ["message_links", "outbox", "turns", "processed_updates", "topics", "users"]
 
 
 @pytest.fixture(autouse=True)
@@ -54,6 +61,18 @@ async def db():
 async def clean_db(db):
     yield
     await db.execute("TRUNCATE " + ", ".join(TABLES) + " RESTART IDENTITY CASCADE")
+
+
+@pytest.fixture(autouse=True)
+def fake_claude(tmp_path) -> FakeClaude:
+    """Every test talks to the fake claude; an empty scenario queue makes a turn crash loudly."""
+    fake = FakeClaude(tmp_path)
+    work = tmp_path / "work"
+    work.mkdir()
+    settings.CLAUDE_ENV = fake.env
+    settings.WORK_ROOT = str(work)
+    settings.DEFAULT_CWD = str(work)
+    return fake
 
 
 @pytest.fixture

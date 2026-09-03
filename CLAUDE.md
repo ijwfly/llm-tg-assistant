@@ -26,15 +26,20 @@ token and `ALLOWED_USERS`, then `docker compose up -d --build`. Locally: `.venv/
 | `app/transport/sender.py`, `outbox.py` | the only door for outgoing calls: rows in `outbox`, worker delivers per-topic in order, parallel across topics, 429/backoff/failed |
 | `app/transport/texts.py` | every user-facing string (Russian) |
 | `app/core/topics.py` | `TopicRef`, `TopicService` |
+| `app/core/runtime.py` | `TopicRuntime` (queue, worker task, claude process, idle timer, turn loop, verdicts), `RuntimeRegistry` |
+| `app/bridge/cli.py`, `process.py`, `events.py` | argv/env builder (permission-mode map, secret stripping), `ClaudeProcess` (spawn, stdin, events, SIGINT, graceful stop), typed stream-json events |
+| `app/render/markdown.py` | text splitting for Telegram limits, duration formatting |
 | `spikes/` | phase-0 experiment scripts against the real `claude` (documentation, not product code) |
 | `tests/` | e2e (real dispatcher + real Postgres + recording Telegram session), unit, `fake_claude/` |
 
 **Request flow**: Telegram update → `AccessMiddleware` → `DedupMiddleware` → router handler →
-`TopicService` → `TelegramSender.enqueue` → `outbox` table → `OutboxWorker` → Bot API.
+`TopicService` → `TopicRuntime.submit` → `ClaudeProcess` stdin → stream-json events → `TelegramSender.enqueue`
+→ `outbox` table → `OutboxWorker` → Bot API (rich → plain fallback) → `message_links`.
 
 **Key patterns**: read `settings.X` at call time (tests override the module); never call the
 Bot API directly from handlers — enqueue through `TelegramSender`; strings live in `texts.py`;
-a message belongs to a topic only when `is_topic_message` is set.
+a message belongs to a topic only when `is_topic_message` is set; the claude process is only touched under
+`TopicRuntime._lock`; a turn ends only on a `result` event (EOF without it = crash → one silent retry).
 
 **Claude Code facts that shape the code** (verified in phase 0): `claude -p` needs `--verbose`
 with stream-json; assistant events arrive one content block at a time; SIGINT ends the turn and
