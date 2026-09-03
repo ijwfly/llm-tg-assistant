@@ -1,6 +1,6 @@
 # PHASE_8_EXTRAS — файлы наружу, вывод инструментов, подагенты, реакция на ошибку, rewind
 
-Status: phase 1 of 3 — `send_file`
+Status: all phases done — send_file, вывод инструментов, подагенты, 👾, rewind; tests green (192 passed); smoke — у пользователя
 
 ## Why
 
@@ -17,8 +17,13 @@ Status: phase 1 of 3 — `send_file`
   `--forward-subagent-text` (docs).
 - Rich-markdown Telegram поддерживает `<details>` (spec 2.2). Лимит plain — 4 000.
 - `setMessageReaction` с 👾 доступен боту (spec 2.2).
-- **Assumed** (spike в фазе 3 этой спеки): `claude -p --resume <id> --rewind-files <uuid>` с
-  `CLAUDE_CODE_ENABLE_SDK_FILE_CHECKPOINTING=true` откатывает Write/Edit до чекпойнта user-сообщения.
+- **Verified** (spike 2026-09-03, haiku): `claude -p --resume <id> --rewind-files <uuid>` — **отдельная
+  операция**: с промптом падает (`--rewind-files is a standalone operation and cannot be used with a prompt`);
+  без stdin печатает `Files rewound to state at message <uuid>` и выходит с 0; файл, созданный в этом
+  сообщении, исчез (состояние на момент отправки сообщения). uuid должен быть user-сообщением этой
+  сессии, иначе `Error: --rewind-files requires a user message UUID`. Два сообщения, поданные в stdin
+  разом, CLI склеивает в один ход (queue-operation): второе не получает своего uuid — мост и так шлёт
+  следующий ход только после `result`.
 
 ## Decisions
 
@@ -36,9 +41,9 @@ Status: phase 1 of 3 — `send_file`
 
 | # | Phase | Status |
 |---|---|---|
-| 1 | `send_file`: MCP-инструмент, сокет, отправка фото/документа, авто-allow, преамбула | ⏳ |
-| 2 | `verbose_tools`, `FORWARD_SUBAGENT_TEXT`, 👾 на ошибке | ⏳ |
-| 3 | Rewind: spike, затем `/rewind` или отказ; документация | ⏳ |
+| 1 | `send_file`: MCP-инструмент, сокет, отправка фото/документа, авто-allow, преамбула | ✅ |
+| 2 | `verbose_tools`, `FORWARD_SUBAGENT_TEXT`, 👾 на ошибке | ✅ |
+| 3 | Rewind: spike, затем «Откатить файлы»; документация | ✅ |
 
 ## Tests
 
@@ -50,7 +55,10 @@ Status: phase 1 of 3 — `send_file`
 
 ## Phase results
 
-_(заполняется по ходу)_
+- 192 теста. Вместо `/rewind` — кнопка «Откатить файлы» на «Ещё» (команд-дублей не заводим): список
+  последних 5 ходов с чекпойнтами → подтверждение → одноразовый процесс; тема остаётся на той же
+  сессии, процесс потом поднимается `--resume`. Чекпойнт пишется всегда (uuid из echo), кнопка и env —
+  только при `FILE_CHECKPOINTING`. `send_file` не спрашивает разрешения. Задачи из hooks не делались.
 
 ## Manual smoke checklist
 

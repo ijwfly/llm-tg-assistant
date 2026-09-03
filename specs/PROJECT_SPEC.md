@@ -1,6 +1,6 @@
 # PROJECT_SPEC — нативное управление сессиями Claude Code через Telegram
 
-Status: фаза 7 из 9 done — настройки на карточке, персона, голос, расход; tests green; фаза 8 (дополнения) не начата
+Status: фаза 8 из 9 done — send_file, вывод инструментов, подагенты, 👾, rewind; tests green; фаза 9 (документация и деплой) не начата
 
 Документ объединяет идеи двух референсов — `reference_spec_claude_code.md` (мост claude-tg:
 тема форума = сессия Claude Code) и `reference_spec_tg_ux.md` (нативный чат-UX для LLM в
@@ -673,9 +673,9 @@ Rich-карточка: заголовок `📋 План готов`, полны
 | Plan mode + `ExitPlanMode` | ✅ | `/perm plan`, карточка плана, одобрение кнопкой |
 | Стриминг текста | ✅ | Draft в личке; превью в группах |
 | Размышления | ✅ | Хвост в `<tg-thinking>` (превью), в ответ не попадают |
-| Вызовы инструментов | ◐ | След в индикаторе; полный вывод — `verbose_tools` |
-| Подагенты | ◐ | В следе как `Task ▸ …`; текст — с `FORWARD_SUBAGENT_TEXT` в `<details>` |
-| Планы/задачи (`TaskCreate`) | ◐ | `TaskCreated/Completed` hooks → живое сообщение со списком `- [x]` (фаза 8, опционально) |
+| Вызовы инструментов | ✅ | След в индикаторе; полный вывод — «Вывод инструментов» на карточке (`<details>`) |
+| Подагенты | ✅ | В следе как `Task ▸ …`; текст — с `FORWARD_SUBAGENT_TEXT` в `<details>` |
+| Планы/задачи (`TaskCreate`) | ❌ | Не делали (открытый вопрос) |
 | Время/шаги/стоимость | ✅ | `/status`, подпись, `/usage` |
 | Прерывание | ✅ | `/cancel`, 🛑, нативный Stop draft'а |
 | Очередь сообщений | ✅ | По теме, один хинт на ход |
@@ -684,7 +684,7 @@ Rich-карточка: заголовок `📋 План готов`, полны
 | Файлы наружу | ✅ | `send_file` |
 | Голос | ✅ | STT/TTS внешними командами |
 | MCP-серверы пользователя, hooks, skills, CLAUDE.md проекта | ✅ | Через `CLAUDE_SETTINGS` и файлы проекта; мост добавляет только `tgbridge` |
-| File checkpointing / rewind | ◐ | `/rewind` за флагом |
+| File checkpointing / rewind | ✅ | «Откатить файлы» на карточке при `FILE_CHECKPOINTING` (standalone `--rewind-files`) |
 | `--max-budget-usd`, `--fallback-model` | ✅ | Ключи конфига |
 | Structured output, `--agents` | ❌ | Не нужны боту |
 | Одновременные сессии | ✅ | Без ограничений, по одной на тему |
@@ -933,7 +933,7 @@ Database / Features.
 | 5 | Разрешения, вопросы, планы | MCP-сервер, сокет, `pending_prompts`, карточки (diff-рендер), «Всегда» (suggestions/localSettings и правила моста), `/perm`, таймауты, AskUserQuestion, ExitPlanMode, `AWAITING_INPUT` | allow/deny/always/timeout/устаревшая кнопка, вопрос с multiSelect и свободным ответом, план → acceptEdits | ✅ |
 | 6 | Сессии и темы | `/sessions` (индекс), `/resume`, `/branch`, `/project` (форум и личка), `/rename`, переименование implicit-тем | resume терминальной сессии, branch в новую тему, project в личке | ✅ |
 | 7 | Настройки, персона, голос | переключатели прав/модели/усилия и страница `⚙️ Ещё` на карточке темы, `/model`, `/effort`, `/soul`, `/voice`, TTS, `/usage`, `NOTIFY_CHAT` | карточка перерисовывается на месте, TTS не шлётся для сплошного кода | ✅ |
-| 8 | Дополнения | `send_file`, `verbose_tools`, `FORWARD_SUBAGENT_TEXT`, `/rewind`, задачи из `TaskCreated` hooks, **дополнения пользователя из раздела 12** | по фиче | ⏳ |
+| 8 | Дополнения | `send_file`, `verbose_tools`, `FORWARD_SUBAGENT_TEXT`, `/rewind`, задачи из `TaskCreated` hooks, **дополнения пользователя из раздела 12** | по фиче | ✅ (без задач из hooks) |
 | 9 | Документация и деплой | `CLAUDE.md` (карта проекта), `README.md`, `CHANGELOG.md`, архитектурные спеки, smoke-прогон на реальном боте | — | ⏳ |
 
 ### Результаты фаз
@@ -969,6 +969,9 @@ Database / Features.
   персона склеиваются в один файл (два `--append-system-prompt-file` не проверялись); голос — один
   файл на ход после текста; `/usage` считает по `turns` (новый столбец `model` из `init`).
   `verbose_tools` — фаза 8.
+- **Фаза 8** (2026-09-03): `specs/PHASE_8_EXTRAS.md`, 192 теста. `send_file` без карточки разрешения;
+  вывод инструментов и текст подагентов в `<details>`; 👾 на якоре при ошибке; rewind проверен спайком
+  (standalone-операция) и сделан кнопкой «Откатить файлы». Задачи из hooks не делались.
 
 ---
 
