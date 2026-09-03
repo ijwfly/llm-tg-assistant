@@ -27,9 +27,14 @@ docker compose up -d --build
 docker compose logs -f bot
 ```
 
-`WORK_ROOT` from `.env` is mounted into the container as `/work`: the bot never leaves it.
-`CLAUDE_HOME` (usually `~/.claude`) gives the container the session transcripts, the subscription
-login and `settings.json`. Set `UID/GID` to your own so files edited by Claude Code stay yours.
+`WORK_ROOT` and `CLAUDE_HOME` (usually `~/.claude`) from `.env` are mounted into the container
+**at the same absolute paths as on the host**. Claude Code names the transcript folder after the
+working directory, so with identical paths a session started in a terminal and one started from the
+bot land in the same folder: the «Sessions» list shows both, and `claude --resume <id>` works from
+either side. The bot never leaves `WORK_ROOT`; `CLAUDE_HOME` gives the container the transcripts,
+the subscription login and `settings.json`. Set `UID/GID` to your own so files edited by Claude Code
+stay yours. Paths in `settings_local.py` (`DEFAULT_CWD`, `PROJECTS`, `NEW_PROJECTS_DIR`, `ADD_DIRS`)
+are host paths and work unchanged in both modes.
 
 Send `/status` to the bot: the topic card appears. Then just write.
 
@@ -113,5 +118,9 @@ For the container add `ffmpeg`/`whisper` to the image yourself: the base image h
   topic» button on the card does it through the bot.
 - A permission card hangs: after `PERMISSION_TIMEOUT_SECS` (10 min) it denies itself; if Claude Code
   cannot see the bridge MCP server, check `BRIDGE_SOCKET` (the socket must be reachable by the `claude` process).
+- Inside the container Claude Code keeps its own global state file `CLAUDE_HOME/.claude.json`
+  (on the host it is `~/.claude.json`, outside `CLAUDE_HOME`): the subscription login comes from
+  `CLAUDE_HOME/.credentials.json` and works, but user-level MCP servers and per-project trust from the
+  host file are not shared. Put project MCP servers into the project's `.mcp.json` instead.
 - The session does not remember the context after «Continue here»: the session is also open in a
   terminal; close it.

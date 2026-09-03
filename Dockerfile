@@ -13,14 +13,16 @@ RUN apt-get update \
  && npm install -g "@anthropic-ai/claude-code@${CLAUDE_CODE_VERSION}" \
  && apt-get clean && rm -rf /var/lib/apt/lists/*
 
-RUN groupadd -g "${GID}" app && useradd -m -u "${UID}" -g "${GID}" -s /bin/bash app
+# the host GID may already exist in the image (macOS staff = 20 = dialout): reuse it
+RUN (getent group "${GID}" >/dev/null || groupadd -g "${GID}" app) \
+ && useradd -m -u "${UID}" -g "${GID}" -s /bin/bash app
 
 WORKDIR /app
 COPY requirements.txt requirements-dev.txt ./
 RUN pip install -r requirements-dev.txt
 
 COPY . .
-RUN mkdir -p /data/inbox /work && chown -R app:app /app /data /work
+RUN mkdir -p /data/inbox && chown -R "${UID}:${GID}" /app /data
 
 USER app
 ENV CLAUDE_CONFIG_DIR=/home/app/.claude

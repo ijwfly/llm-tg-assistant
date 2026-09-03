@@ -12,6 +12,9 @@ one forum topic (or private-chat topic) = one Claude Code session. Design: `spec
 token and `ALLOWED_USERS`, then `docker compose up -d --build`. Locally: `.venv/bin/python -m app.main`.
 Human-facing setup and operations: `README.md`.
 **Test**: `bash scripts/test.sh [-k name -v]` (needs Docker for the test Postgres).
+**Compose mounts `WORK_ROOT` and `CLAUDE_HOME` at their host paths** (not `/work`): the cwd of every
+`claude` process, and so its transcript folder, is identical in the container and in a terminal; paths in
+`settings_local.py` are host paths in both modes.
 
 **Layout** (Python 3.12, aiogram 3.31, asyncpg, Postgres 16):
 
