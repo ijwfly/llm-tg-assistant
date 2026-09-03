@@ -26,7 +26,8 @@ services:
       db:
         condition: service_healthy
     env_file:
-      - .env
+      - path: .env
+        required: false
     environment:
       DATABASE_URL: postgresql://${POSTGRES_USER:-app}:${POSTGRES_PASSWORD:-app}@db:5432/${POSTGRES_DB:-app}
       WORK_ROOT: /work

@@ -10,6 +10,7 @@ one forum topic (or private-chat topic) = one Claude Code session. Design: `spec
 
 **Run**: `cp .env.example .env`, `cp settings_local.py.example settings_local.py`, fill the
 token and `ALLOWED_USERS`, then `docker compose up -d --build`. Locally: `.venv/bin/python -m app.main`.
+Human-facing setup and operations: `README.md`.
 **Test**: `bash scripts/test.sh [-k name -v]` (needs Docker for the test Postgres).
 
 **Layout** (Python 3.12, aiogram 3.31, asyncpg, Postgres 16):

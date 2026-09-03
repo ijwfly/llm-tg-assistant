@@ -85,8 +85,9 @@ class App:
         while True:
             try:
                 await self.inbox.cleanup()
+                await self.store.updates.cleanup()
             except Exception:
-                log.exception("inbox cleanup failed")
+                log.exception("cleanup failed")
             await asyncio.sleep(6 * 3600)
 
     async def register_commands(self) -> None:

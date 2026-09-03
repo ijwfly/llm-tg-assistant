@@ -77,6 +77,9 @@ All notable changes to this project are documented here. The format follows
   buttons are labelled with words instead of emoji; «Удалить тему» on the topic card and `/delete`
   (with confirmation) remove a topic through the bot — Telegram lets only the bot delete topics it
   created in private chats. See `specs/PHASE_6B_SESSION_DISCOVERY.md`.
+- **Docs and deploy (phase 9)** — `README.md` (quick start, usage model, settings, operations,
+  troubleshooting), `.dockerignore`, optional `.env` for compose, periodic cleanup of
+  `processed_updates`; the image and the whole suite run through `scripts/test_docker.sh`.
 - **Extras (phase 8)** — the model can send files to the topic (`mcp__tgbridge__send_file`,
   photos as photos, no permission card); «Вывод инструментов» on the card shows every tool result
   as a collapsed `<details>` block; `FORWARD_SUBAGENT_TEXT` shows subagent text the same way; a
