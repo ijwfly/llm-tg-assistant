@@ -19,6 +19,35 @@ async def _refresh_after(app, topic: dict, cq: CallbackQuery) -> None:
         await actions.refresh_card(app, topic, cq.message.message_id)
 
 
+PROMPT_ACTIONS = {"pa", "pd", "pw", "pc", "qo", "qd", "qc", "pl"}
+
+
+async def _prompt_action(app, action: str, arg: str, message_id: int | None) -> str:
+    """arg = "<prompt_id>[:<extra>]"."""
+    pid, _, extra = arg.partition(":")
+    if not pid.isdigit():
+        return texts.TOAST_PROMPT_STALE
+    prompt_id = int(pid)
+    prompts = app.prompts
+    if action == "pa":
+        return await prompts.permission(prompt_id, "allow", message_id)
+    if action == "pd":
+        return await prompts.permission(prompt_id, "deny", message_id)
+    if action == "pw":
+        return await prompts.permission(prompt_id, "always", message_id)
+    if action == "pc":
+        return await prompts.permission(prompt_id, "comment", message_id)
+    if action == "qo":
+        return await prompts.question_option(prompt_id, int(extra) if extra.isdigit() else -1, message_id)
+    if action == "qd":
+        return await prompts.question_done(prompt_id, message_id)
+    if action == "qc":
+        return await prompts.question_custom(prompt_id, message_id)
+    if action == "pl":
+        return await prompts.plan(prompt_id, extra, message_id)
+    return texts.TOAST_PROMPT_STALE
+
+
 async def on_callback(cq: CallbackQuery, app) -> None:
     parsed = parse_cb(cq.data or "")
     if parsed is None:
@@ -48,6 +77,8 @@ async def on_callback(cq: CallbackQuery, app) -> None:
             toast = await actions.refresh_card(app, topic, cq.message.message_id) if cq.message else texts.TOAST_STALE
         elif action == "hide":
             toast = await actions.hide_card(app, topic, cq.message.message_id) if cq.message else texts.TOAST_STALE
+        elif action in PROMPT_ACTIONS:
+            toast = await _prompt_action(app, action, arg or "", cq.message.message_id if cq.message else None)
         else:
             toast = texts.TOAST_STALE
     except Exception:

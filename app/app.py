@@ -8,6 +8,8 @@ from aiogram import Bot
 from aiogram.methods import SetMyCommands
 
 import settings
+from app.bridge.socket_server import BridgeSocket
+from app.core.prompts import PromptService
 from app.core.runtime import RuntimeRegistry
 from app.core.topics import TopicService
 from app.ingest.batcher import Batcher
@@ -20,7 +22,7 @@ from app.transport.bot import BOT_COMMANDS, build_dispatcher
 from app.transport.outbox import OutboxWorker
 from app.transport.sender import TelegramSender
 
-VERSION = "0.4.0-phase4"
+VERSION = "0.5.0-phase5"
 log = logging.getLogger(__name__)
 
 
@@ -39,6 +41,8 @@ class App:
         self.outbox = OutboxWorker(bot, self.store.outbox, self.store.links)
         self.sender = TelegramSender(self.store, self.outbox.wake)
         self.topics = TopicService(self.store)
+        self.prompts = PromptService(self)
+        self.bridge_socket = BridgeSocket(self)
         self.runtimes = RuntimeRegistry(self)
         self.inbox = InboxService(self)
         self.ingest = Ingest(self)
@@ -50,6 +54,10 @@ class App:
     async def start(self) -> None:
         self._stopped = False
         await self.outbox.start()
+        stale = await self.store.prompts.mark_all_stale()   # cards from before the restart cannot be answered
+        if stale:
+            log.info("marked %s pending prompts stale", stale)
+        await self.bridge_socket.start()
         self._cleanup_task = asyncio.create_task(self._cleanup_loop(), name="inbox-cleanup")
         notify = parse_notify_chat(settings.NOTIFY_CHAT)
         if notify:
@@ -64,6 +72,7 @@ class App:
             return
         self._stopped = True
         await self.runtimes.shutdown_all()
+        await self.bridge_socket.stop()
         if self._cleanup_task:
             self._cleanup_task.cancel()
         notify = parse_notify_chat(settings.NOTIFY_CHAT)

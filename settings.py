@@ -38,6 +38,12 @@ CLAUDE_SETTINGS: str | None = None                        # --settings <file or 
 ADD_DIRS: list[str] = []                                  # --add-dir, extra directories the model may touch
 CLAUDE_ENV: dict[str, str] = {}                           # extra environment for the claude process
 
+# --- Permissions, questions, plans (PROJECT_SPEC 4.6-4.7) ------------------------
+BRIDGE_SOCKET: str = os.environ.get("BRIDGE_SOCKET", "/tmp/tgbridge.sock")   # unix socket: MCP prompt tool -> daemon
+PERMISSION_TIMEOUT_SECS: float = 600.0   # unanswered permission card -> deny
+QUESTION_TIMEOUT_SECS: float = 1800.0    # unanswered question / plan card -> deny
+PERMISSION_DIFF_LINES: int = 60          # diff lines shown on Edit/Write cards
+
 # --- Turns / processes ------------------------------------------------------------
 IDLE_TIMEOUT_SECS: float = 1800.0    # idle process is stopped after this; next turn resumes the session
 TURN_TIMEOUT_SECS: float = 3600.0    # a turn longer than this is interrupted

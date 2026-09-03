@@ -4,7 +4,7 @@ from __future__ import annotations
 from aiogram.methods import DeleteMessage, EditMessageText, SendMessage, SendRichMessage, SetMessageReaction, TelegramMethod
 from aiogram.types import InputRichMessage, ReactionTypeEmoji
 
-from app.render.markdown import RICH_LIMIT, split_markdown
+from app.render.markdown import PLAIN_LIMIT, RICH_LIMIT, split_markdown
 from app.store.repos import Store
 
 FILE_PREFIX = "file://"   # outbox payloads carry local files as "file://<path>"; the worker opens them
@@ -56,13 +56,16 @@ class TelegramSender:
         return await self.enqueue(self._key(chat_id, thread_id), method, topic_id=topic_id, turn_id=turn_id, role=role)
 
     async def send_markdown(self, chat_id: int, thread_id: int | None, markdown: str, *,
-                            reply_to_message_id: int | None = None, topic_id: int | None = None,
+                            reply_to_message_id: int | None = None, reply_markup=None, topic_id: int | None = None,
                             turn_id: int | None = None, role: str | None = "assistant") -> list[int]:
-        """Rich message(s); the outbox worker falls back to plain text if Telegram rejects the markup."""
+        """Rich message(s); the outbox worker falls back to plain text if Telegram rejects the markup.
+        `reply_markup` goes on the last chunk."""
         ids = []
-        for chunk in split_markdown(markdown, RICH_LIMIT):
+        chunks = split_markdown(markdown, RICH_LIMIT)
+        for i, chunk in enumerate(chunks):
             method = SendRichMessage(
                 chat_id=chat_id, message_thread_id=thread_id, rich_message=InputRichMessage(markdown=chunk),
+                reply_markup=reply_markup if i == len(chunks) - 1 else None,
                 reply_parameters={"message_id": reply_to_message_id} if reply_to_message_id else None)
             ids.append(await self.enqueue(self._key(chat_id, thread_id), method,
                                           topic_id=topic_id, turn_id=turn_id, role=role))
@@ -82,6 +85,13 @@ class TelegramSender:
     async def edit_text(self, chat_id: int, thread_id: int | None, message_id: int, text: str, *,
                         reply_markup=None, topic_id: int | None = None) -> int:
         method = EditMessageText(chat_id=chat_id, message_id=message_id, text=text, reply_markup=reply_markup)
+        return await self.enqueue(self._key(chat_id, thread_id), method, topic_id=topic_id, role="edit")
+
+    async def edit_markdown(self, chat_id: int, thread_id: int | None, message_id: int, markdown: str, *,
+                            reply_markup=None, topic_id: int | None = None) -> int:
+        """Rich in-place edit; the worker falls back to a plain-text edit if Telegram rejects the markup."""
+        method = EditMessageText(chat_id=chat_id, message_id=message_id, text=markdown[:PLAIN_LIMIT],
+                                 rich_message=InputRichMessage(markdown=markdown[:RICH_LIMIT]), reply_markup=reply_markup)
         return await self.enqueue(self._key(chat_id, thread_id), method, topic_id=topic_id, role="edit")
 
     async def delete(self, chat_id: int, thread_id: int | None, message_id: int, *, topic_id: int | None = None) -> int:

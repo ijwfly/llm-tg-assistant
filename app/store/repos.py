@@ -242,6 +242,48 @@ class InboxRepo:
         await self.db.execute("UPDATE inbox_files SET created_at = to_timestamp($2) WHERE id = $1", row_id, epoch)
 
 
+class PromptsRepo:
+    def __init__(self, db: Database):
+        self.db = db
+
+    async def create(self, topic_id: int, turn_id: int | None, kind: str, tool_name: str, tool_use_id: str | None,
+                     payload: dict) -> int:
+        return await self.db.fetchval(
+            """INSERT INTO pending_prompts (topic_id, turn_id, kind, tool_name, tool_use_id, payload)
+               VALUES ($1, $2, $3, $4, $5, $6) RETURNING id""",
+            topic_id, turn_id, kind, tool_name, tool_use_id, payload)
+
+    async def resolve(self, prompt_id: int, status: str, answer: dict | None) -> None:
+        await self.db.execute(
+            "UPDATE pending_prompts SET status = $2, answer = $3, resolved_at = now() WHERE id = $1",
+            prompt_id, status, answer)
+
+    async def get(self, prompt_id: int) -> dict | None:
+        return _row(await self.db.fetchrow("SELECT * FROM pending_prompts WHERE id = $1", prompt_id))
+
+    async def mark_all_stale(self) -> int:
+        result = await self.db.execute(
+            "UPDATE pending_prompts SET status = 'stale', resolved_at = now() WHERE status = 'pending'")
+        return int(result.rsplit(" ", 1)[-1] or 0)
+
+
+class RulesRepo:
+    def __init__(self, db: Database):
+        self.db = db
+
+    async def add(self, topic_id: int, rule: str) -> None:
+        await self.db.execute(
+            "INSERT INTO topic_rules (topic_id, rule) VALUES ($1, $2) ON CONFLICT DO NOTHING", topic_id, rule)
+
+    async def list(self, topic_id: int) -> list[str]:
+        return [r["rule"] for r in await self.db.fetch(
+            "SELECT rule FROM topic_rules WHERE topic_id = $1 ORDER BY created_at, rule", topic_id)]
+
+    async def clear(self, topic_id: int) -> int:
+        result = await self.db.execute("DELETE FROM topic_rules WHERE topic_id = $1", topic_id)
+        return int(result.rsplit(" ", 1)[-1] or 0)
+
+
 class Store:
     def __init__(self, db: Database):
         self.db = db
@@ -253,3 +295,5 @@ class Store:
         self.inbox = InboxRepo(db)
         self.updates = UpdatesRepo(db)
         self.links = MessageLinksRepo(db)
+        self.prompts = PromptsRepo(db)
+        self.rules = RulesRepo(db)

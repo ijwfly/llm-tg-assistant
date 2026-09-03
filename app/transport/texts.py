@@ -38,7 +38,7 @@ GO_UNKNOWN = "Нет алиаса {alias}. Список — /go без аргу�
 TURN_NO_TEXT = "✔️ Готово — в ответе не было ни слова текста."
 TURN_ERROR = "⚠️ Ход завершился с ошибкой: {error}"
 TURN_LIMIT = "⏹ Достигнут лимит {what}. Контекст цел — продолжай или /retry."
-DENIED = "🔒 Отклонено без спроса: {tools}\nКнопки разрешений появятся позже; пока помогает /perm acceptEdits или правила ALLOWED_TOOLS."
+DENIED = "🔒 Отклонено без спроса: {tools}\nРежим темы не спрашивает (dontAsk или правило deny); /perm prompt вернёт кнопки."
 TURN_TIMEOUT = "⏱ Ход шёл дольше лимита и был прерван. Контекст сохранён."
 DAEMON_STOPPED = "⏹ Демон остановлен посреди хода. Контекст цел — /retry повторит."
 COMPACTED = "🧹 Контекст сжат: было {pre_tokens} токенов."
@@ -50,6 +50,40 @@ EDIT_SEEN = "✏️ Вижу правку — отвечаю на неё."
 FILES_EMPTY = "В этой теме файлов пока нет."
 
 PERM_SET = "🔐 Права: {mode}. Процесс перезапустится на следующем ходе, контекст остаётся."
+PERM_FORGOT = "Забыла {n} правил. Снова буду спрашивать."
+PERM_NOTHING_TO_FORGET = "В этой теме я правил не добавляла."
+
+# prompts (permissions, questions, plans)
+PERM_ALLOWED = "✅ разрешено"
+PERM_DENIED = "❌ отказано"
+PERM_DENIED_WITH = "❌ отказано: «{text}»"
+PERM_ALWAYS = "🔓 разрешено, и больше не спрошу: {rule}"
+PERM_TIMEOUT = "⌛ без ответа — отклонено"
+PERM_CANCELLED = "🛑 ход прерван"
+PERM_ASK_COMMENT = "✏️ Напиши следующим сообщением, что сделать вместо этого."
+QUESTION_ASK_CUSTOM = "✍ Напиши ответ следующим сообщением."
+QUESTION_ANSWERED = "→ {answer}"
+PLAN_ACCEPTED = "✅ выполняю, правки без вопросов"
+PLAN_ACCEPTED_ASK = "✅ выполняю, про правки буду спрашивать"
+PLAN_REWORK = "✏️ Напиши следующим сообщением, что поправить в плане."
+PLAN_REWORKED = "✏️ на доработку: «{text}»"
+WAITING_PERMISSION = "🔐 жду разрешения ({tool})"
+WAITING_QUESTION = "❓ жду ответа"
+WAITING_PLAN = "📋 жду решения по плану"
+TOAST_PROMPT_STALE = "Запрос уже неактуален"
+TOAST_ALLOWED = "Разрешено"
+TOAST_DENIED = "Отклонено"
+TOAST_ALWAYS = "Разрешено навсегда"
+TOAST_WRITE_NEXT = "Жду твоё сообщение"
+TOAST_CHOSEN = "Принято"
+
+# what the model sees on a deny (English: it is the tool result)
+DENY_MSG_USER = "User denied this action via Telegram."
+DENY_MSG_COMMENT = "User denied: {text}"
+DENY_MSG_TIMEOUT = "User did not answer within {minutes} minutes."
+DENY_MSG_CANCELLED = "Turn cancelled by the user."
+DENY_MSG_NO_TURN = "No active Telegram turn for this session."
+DENY_MSG_PLAN_REWORK = "User asked to rework the plan: {text}"
 PERM_UNKNOWN = "Не знаю режим {mode}. Варианты: prompt, acceptEdits, plan, auto, dontAsk" + ", bypass (если разрешён)."
 
 TOAST_NEW = "Новый контекст"
@@ -62,10 +96,17 @@ TOAST_STALE = "Уже неактуально"
 TOAST_FAILED = "Не получилось, смотри лог"
 
 
-def perm_info(mode: str | None) -> str:
+def perm_info(mode: str | None, topic_rules: list[str] = (), local_rules: list[str] = ()) -> str:
     modes = ["prompt", "acceptEdits", "plan", "auto", "dontAsk", "bypass"]
     rows = [f"{'← ' if m == (mode or 'prompt') else '   '}{m}" for m in modes]
-    return "Права темы:\n" + "\n".join(rows) + "\n\n/perm <режим> — сменить; /perm default — из конфига."
+    text = "Права темы:\n" + "\n".join(rows) + "\n\n/perm <режим> — сменить; /perm default — из конфига."
+    if topic_rules:
+        text += "\n\nРазрешила по кнопке «Всегда»:\n" + "\n".join(f"• {r}" for r in topic_rules)
+        text += "\n/perm forget — забыть их."
+    others = [r for r in local_rules if r not in set(topic_rules)]
+    if others:
+        text += "\n\nДругие allow-правила проекта:\n" + "\n".join(f"• {r}" for r in others[:20])
+    return text
 
 
 def crash(code: int | None, stderr_tail: str) -> str:
@@ -111,7 +152,8 @@ def status(topic: dict, rt: dict | None, staging: int = 0) -> str:
         f"Права        {topic['permission_mode'] or 'по умолчанию'}",
         f"Процесс      {'живой, ' + format_duration(int(proc * 1000)) if proc is not None else 'спит'}",
         f"Ход          {'идёт ' + format_duration(int(turn * 1000)) if turn is not None else 'нет'}"
-        + (f" · в очереди {rt['queued']}" if rt.get("queued") else ""),
+        + (f" · в очереди {rt['queued']}" if rt.get("queued") else "")
+        + (f" · {rt['waiting']}" if rt.get("waiting") else ""),
     ]
     if staging:
         lines.append(f"Staging      {staging} (уйдёт со следующим вопросом)")

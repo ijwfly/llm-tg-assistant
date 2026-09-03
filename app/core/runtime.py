@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import secrets
 import time
 import uuid
 from dataclasses import dataclass, field
@@ -66,6 +67,7 @@ class TopicRuntime:
         self.key = f"{self.chat_id}:{self.thread_id or 0}"
         self.queue: asyncio.Queue[TurnRequest] = asyncio.Queue(maxsize=settings.TURN_QUEUE_MAX)
         self.proc: ClaudeProcess | None = None
+        self.prompt_token: str | None = None   # identifies this process to the bridge MCP server
         self.current: TurnState | None = None
         self.last_turn: dict | None = None
         self._worker = asyncio.create_task(self._loop(), name=f"topic-{self.topic_id}")
@@ -89,6 +91,7 @@ class TopicRuntime:
             return False
         state.cancelled = True
         self.proc.interrupt()
+        await self.app.prompts.abandon(self.topic_id, texts.DENY_MSG_CANCELLED, texts.PERM_CANCELLED)
         return True
 
     async def stop_process(self) -> None:
@@ -127,6 +130,7 @@ class TopicRuntime:
             "turn": (time.monotonic() - state.started if state else None),
             "queued": self.queue.qsize(),
             "last": self.last_turn,
+            "waiting": (state.progress.waiting if state else None),
         }
 
     # ------------------------------------------------------------------ internals
@@ -135,6 +139,8 @@ class TopicRuntime:
         if self.proc is not None:
             await self.proc.stop()
             self.proc = None
+        self.app.prompts.unregister(self.prompt_token)
+        self.prompt_token = None
 
     def _arm_idle_timer(self) -> None:
         if self._idle_task:
@@ -171,17 +177,22 @@ class TopicRuntime:
             if self.proc is not None and self.proc.alive:
                 return
             self.proc = None
-            proc = ClaudeProcess(build_argv(topic, resume=bool(topic["session_resumable"])), topic["cwd"], child_env())
+            self.app.prompts.unregister(self.prompt_token)
+            self.prompt_token = secrets.token_urlsafe(12)
+            self.app.prompts.register(self.prompt_token, self)
+            proc = ClaudeProcess(build_argv(topic, resume=bool(topic["session_resumable"]), prompt_token=self.prompt_token),
+                                 topic["cwd"], child_env())
             await proc.start()
             self.proc = proc
 
     async def _typing(self) -> None:
         deadline = time.monotonic() + 180
         while time.monotonic() < deadline:
-            try:
-                await self.app.bot.send_chat_action(self.chat_id, "typing", message_thread_id=self.thread_id)
-            except Exception as e:  # cosmetic
-                log.debug("typing failed: %r", e)
+            if not (self.current and self.current.progress.waiting):   # no typing while a card waits for the user
+                try:
+                    await self.app.bot.send_chat_action(self.chat_id, "typing", message_thread_id=self.thread_id)
+                except Exception as e:  # cosmetic
+                    log.debug("typing failed: %r", e)
             await asyncio.sleep(settings.TYPING_INTERVAL)
 
     def _make_live(self, state: TurnState) -> LiveView:
@@ -232,6 +243,7 @@ class TopicRuntime:
             await self._finish(state)
         finally:
             typing.cancel()
+            await self.app.prompts.abandon(self.topic_id, texts.DENY_MSG_CANCELLED, texts.PERM_CANCELLED)
             if state.live:
                 await state.live.finish()
 
@@ -360,6 +372,8 @@ class TopicRuntime:
             if self.proc is not None:
                 await self.proc.stop(grace=5)
                 self.proc = None
+            self.app.prompts.unregister(self.prompt_token)
+            self.prompt_token = None
 
     async def _finish_crash(self, state: TurnState, code: int | None, stderr_tail) -> None:
         await self.app.store.turns.finish(state.turn_id, status="crashed", error="\n".join(stderr_tail)[:2000])

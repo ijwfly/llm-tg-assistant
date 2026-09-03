@@ -93,6 +93,15 @@ class OutboxWorker:
             if row.method == "SendRichMessage":
                 log.warning("outbox %s: rich message rejected (%s), falling back to plain text", row.id, e.message)
                 return await self._send_plain_fallback(row)
+            if row.method == "EditMessageText" and payload.get("rich_message"):
+                log.warning("outbox %s: rich edit rejected (%s), falling back to plain text", row.id, e.message)
+                plain = {k: v for k, v in payload.items() if k != "rich_message"}
+                try:
+                    await self.bot(method_cls.model_validate(plain))
+                except TelegramBadRequest as e2:
+                    if "not modified" not in e2.message:
+                        raise PermanentDeliveryError(e2)
+                return None
             raise PermanentDeliveryError(e)
         return result.message_id if isinstance(result, Message) else None
 

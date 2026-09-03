@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import settings
 from app.bridge.cli import PERMISSION_MODES
+from app.bridge.rules import forget_rules as _forget_in_files, local_allow_rules
 from app.core.runtime import QueueFull, TurnRequest
 from app.render.keyboards import topic_card_kb
 from app.transport import texts
@@ -68,6 +69,23 @@ async def set_permission_mode(app, topic: dict, mode: str) -> str:
     await app.runtimes.get(topic).stop_process()   # the new mode applies on the next spawn, context kept
     await send_to_topic(app, topic, texts.PERM_SET.format(mode=mode))
     return texts.PERM_SET.format(mode=mode)
+
+
+async def perm_info(app, topic: dict) -> str:
+    topic_rules = await app.store.rules.list(topic["id"])
+    return texts.perm_info(topic["permission_mode"], topic_rules, local_allow_rules(topic["cwd"], settings.WORK_ROOT))
+
+
+async def forget_rules(app, topic: dict) -> str:
+    rules = await app.store.rules.list(topic["id"])
+    if not rules:
+        await send_to_topic(app, topic, texts.PERM_NOTHING_TO_FORGET)
+        return texts.PERM_NOTHING_TO_FORGET
+    _forget_in_files(topic["cwd"], settings.WORK_ROOT, rules)
+    await app.store.rules.clear(topic["id"])
+    text = texts.PERM_FORGOT.format(n=len(rules))
+    await send_to_topic(app, topic, text)
+    return text
 
 
 async def topic_card(app, topic: dict) -> tuple[str, object]:

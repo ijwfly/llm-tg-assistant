@@ -50,6 +50,21 @@ def permission_denied(tool: str) -> dict:
             "decision_reason": "no approval surface", "session_id": "{session_id}"}
 
 
+def prompt_tool(tool_name: str, tool_input: dict, tool_use_id: str = "toolu_1") -> dict:
+    """Scenario step: the fake really calls the bridge MCP server and blocks until the decision."""
+    return {"prompt_tool": {"tool_name": tool_name, "input": tool_input, "tool_use_id": tool_use_id}}
+
+
+def question(*questions: dict) -> dict:
+    return {"questions": list(questions)}
+
+
+def q(text: str, *options: str, header: str = "Вопрос", multi: bool = False, descriptions: dict | None = None) -> dict:
+    descriptions = descriptions or {}
+    return {"question": text, "header": header, "multiSelect": multi,
+            "options": [{"label": o, "description": descriptions.get(o, "")} for o in options]}
+
+
 class FakeClaude:
     def __init__(self, root: Path):
         self.scenarios = root / "scenarios"
@@ -90,6 +105,10 @@ class FakeClaude:
             else:
                 out.append("\n".join(b.get("text", "") for b in content if b.get("type") == "text"))
         return out
+
+    def decisions(self) -> list[dict]:
+        """Decisions the prompt tool returned, in order."""
+        return [rec["prompt_decision"] for rec in self.log() if "prompt_decision" in rec]
 
     def signals(self) -> list[str]:
         return [rec["signal"] for rec in self.log() if "signal" in rec]

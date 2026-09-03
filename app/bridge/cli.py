@@ -1,9 +1,16 @@
 """Command line and environment for a topic's `claude` process."""
 from __future__ import annotations
 
+import json
 import os
+import sys
+from pathlib import Path
 
 import settings
+
+MCP_SERVER = Path(__file__).resolve().parent / "mcp_server.py"
+PROMPT_TOOL = "mcp__tgbridge__approve"
+PROMPT_MODES = {"prompt", "acceptEdits", "plan", "auto"}   # bridge modes that route questions to Telegram
 
 # bridge permission mode -> --permission-mode value
 PERMISSION_MODES = {
@@ -29,12 +36,27 @@ def child_env() -> dict[str, str]:
     return env
 
 
-def build_argv(topic: dict, *, resume: bool) -> list[str]:
+def mcp_config(token: str) -> str:
+    """Inline --mcp-config JSON for the bridge's prompt tool server."""
+    timeout = max(settings.PERMISSION_TIMEOUT_SECS, settings.QUESTION_TIMEOUT_SECS) + 30
+    return json.dumps({"mcpServers": {"tgbridge": {
+        "command": sys.executable, "args": [str(MCP_SERVER)],
+        "env": {"TGBRIDGE_SOCKET": settings.BRIDGE_SOCKET, "TGBRIDGE_TOKEN": token,
+                "TGBRIDGE_TIMEOUT": str(int(timeout))}}}})
+
+
+def uses_prompt_tool(topic: dict) -> bool:
+    return (topic.get("permission_mode") or settings.DEFAULT_PERMISSION_MODE) in PROMPT_MODES
+
+
+def build_argv(topic: dict, *, resume: bool, prompt_token: str | None = None) -> list[str]:
     mode = PERMISSION_MODES.get(topic.get("permission_mode") or settings.DEFAULT_PERMISSION_MODE, "default")
     argv = [settings.CLAUDE_BIN, "-p", "--verbose",
             "--input-format", "stream-json", "--output-format", "stream-json",
             "--include-partial-messages", "--replay-user-messages",
             "--permission-mode", mode]
+    if prompt_token and uses_prompt_tool(topic):
+        argv += ["--permission-prompt-tool", PROMPT_TOOL, "--mcp-config", mcp_config(prompt_token)]
     if resume:
         argv += ["--resume", str(topic["session_id"])]
     else:

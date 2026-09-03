@@ -135,7 +135,10 @@ async def cmd_perm(message: Message, command: CommandObject, app) -> None:
     topic = await _topic(app, message)
     mode = (command.args or "").strip()
     if not mode:
-        await actions.send_to_topic(app, topic, texts.perm_info(topic["permission_mode"]))
+        await actions.send_to_topic(app, topic, await actions.perm_info(app, topic))
+        return
+    if mode == "forget":
+        await actions.forget_rules(app, topic)
         return
     if mode == "default":
         mode = settings.DEFAULT_PERMISSION_MODE
@@ -149,6 +152,8 @@ async def cmd_perm(message: Message, command: CommandObject, app) -> None:
 async def any_message(message: Message, app) -> None:
     """Everything that is not a bridge command goes through the batcher (PROJECT_SPEC 4.4)."""
     topic = await _topic(app, message)
+    if message.text and await app.prompts.consume_text(topic, message.text):
+        return   # the text answered a card that asked for it (deny comment, custom answer, plan rework)
     app.batcher.add(topic, message)
 
 

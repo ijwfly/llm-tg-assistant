@@ -1,6 +1,8 @@
 """Root test configuration: settings overrides BEFORE the app is imported, DB and app fixtures."""
 import os
+import shutil
 import sys
+import tempfile
 from pathlib import Path
 
 import pytest
@@ -35,6 +37,8 @@ settings.DRAFT_KEEPALIVE = 0.3
 settings.PROGRESS_DELAY = 0.0
 settings.BATCH_WINDOW_MS = 60
 settings.TRANSCRIBE_CMD = None
+settings.PERMISSION_TIMEOUT_SECS = 5.0
+settings.QUESTION_TIMEOUT_SECS = 5.0
 
 from aiogram import Bot  # noqa: E402
 
@@ -44,7 +48,8 @@ from tests.support.fake_claude import FakeClaude  # noqa: E402
 from tests.support.session import RecordingSession  # noqa: E402
 from tests.support.spy import TelegramSpy  # noqa: E402
 
-TABLES = ["message_links", "outbox", "turns", "staging_items", "inbox_files", "processed_updates", "topics", "users"]
+TABLES = ["message_links", "outbox", "pending_prompts", "topic_rules", "turns", "staging_items", "inbox_files",
+          "processed_updates", "topics", "users"]
 
 
 @pytest.fixture(autouse=True)
@@ -70,7 +75,7 @@ async def clean_db(db):
 
 
 @pytest.fixture(autouse=True)
-def fake_claude(tmp_path) -> FakeClaude:
+def fake_claude(tmp_path, request) -> FakeClaude:
     """Every test talks to the fake claude; an empty scenario queue makes a turn crash loudly."""
     fake = FakeClaude(tmp_path)
     work = tmp_path / "work"
@@ -79,6 +84,10 @@ def fake_claude(tmp_path) -> FakeClaude:
     settings.WORK_ROOT = str(work)
     settings.DEFAULT_CWD = str(work)
     settings.INBOX_DIR = str(tmp_path / "inbox")
+    # unix socket paths are limited to ~100 bytes: keep it in the short system temp dir, not tmp_path
+    sock_dir = tempfile.mkdtemp(prefix="tgb")
+    request.addfinalizer(lambda: shutil.rmtree(sock_dir, ignore_errors=True))
+    settings.BRIDGE_SOCKET = os.path.join(sock_dir, "b.sock")
     return fake
 
 
