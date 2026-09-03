@@ -1,6 +1,6 @@
 # PROJECT_SPEC — нативное управление сессиями Claude Code через Telegram
 
-Status: фаза 3 из 9 done — живой draft/прогресс, рендер и кнопки, tests green; фаза 4 (входной конвейер) не начата
+Status: фаза 4 из 9 done — батчер, staging, медиа и голос, tests green; фаза 5 (разрешения, вопросы, планы) не начата
 
 Документ объединяет идеи двух референсов — `reference_spec_claude_code.md` (мост claude-tg:
 тема форума = сессия Claude Code) и `reference_spec_tg_ux.md` (нативный чат-UX для LLM в
@@ -911,7 +911,7 @@ Database / Features.
 | 1 | Скелет | `settings.py`, БД + миграции, compose, aiogram polling, access middleware, dedup, outbox, `/help`, `/whoami`, `/topics`; e2e-инфра: recording session, fake `claude`, `scripts/test.sh`; `specs/E2E_TESTS.md` | доступ (чужой молчит), outbox доставка/повтор/429, dedup | ✅ |
 | 2 | Процесс и ход | `ClaudeProcess`, парсер stream-json, `TurnRunner`, очередь темы, `/new`, `/stop`, `/cancel`, `/retry`, `/status`, `/cd`, `/go`, плоская доставка ответа (rich без стриминга), сообщения конца хода и обрыва, idle/turn таймауты | простой ход, очередь, cancel, падение+retry, resume после idle, compact_boundary | ✅ |
 | 3 | Стриминг, рендер, кнопки | draft в личке (`<tg-thinking>`, can_stop, keepalive), прогресс в группах с `🛑`, шлюзы, fence-aware сплиттер, файл при длинном ответе, склейка сегментов, thinking-превью; слой callback, кнопки на вердиктах, карточка темы с базовыми действиями (новый контекст, стоп, прервать, обновить, скрыть), меню «/» из 4 команд | границы контента, stop через draft и кнопку, 429 на правке, карточка и устаревшие кнопки | ✅ |
-| 4 | Входной конвейер | батчер, prompt/staging, форварды, медиа (фото → image block + inbox, документы, голос/STT), reply-цитаты, правки, реакции, `/files`, чистка inbox | альбом = один ход, staging уходит со следующим ходом, форвард без ответа, файл > 20 МБ | ⏳ |
+| 4 | Входной конвейер | батчер, prompt/staging, форварды, медиа (фото → image block + inbox, документы, голос/STT), reply-цитаты, правки, реакции, `/files`, чистка inbox | альбом = один ход, staging уходит со следующим ходом, форвард без ответа, файл > 20 МБ | ✅ |
 | 5 | Разрешения, вопросы, планы | MCP-сервер, сокет, `pending_prompts`, карточки (diff-рендер), «Всегда» (suggestions/localSettings и правила моста), `/perm`, таймауты, AskUserQuestion, ExitPlanMode, `AWAITING_INPUT` | allow/deny/always/timeout/устаревшая кнопка, вопрос с multiSelect и свободным ответом, план → acceptEdits | ⏳ |
 | 6 | Сессии и темы | `/sessions` (индекс), `/resume`, `/branch`, `/project` (форум и личка), `/rename`, переименование implicit-тем | resume терминальной сессии, branch в новую тему, project в личке | ⏳ |
 | 7 | Настройки, персона, голос | переключатели прав/модели/усилия и страница `⚙️ Ещё` на карточке темы, `/model`, `/effort`, `/soul`, `/voice`, TTS, `/usage`, `NOTIFY_CHAT` | карточка перерисовывается на месте, TTS не шлётся для сплошного кода | ⏳ |
@@ -933,6 +933,8 @@ Database / Features.
 - **Фаза 3** (2026-09-03): `specs/PHASE_3_STREAMING.md`, 85 тестов. Draft с `<tg-thinking>` в личке,
   прогресс с `🛑` в группах, fence-aware сплиттер, файл-ответ, кнопки на вердиктах, карточка темы,
   меню «/» из трёх команд.
+- **Фаза 4** (2026-09-03): `specs/PHASE_4_INGEST.md`, 106 тестов. Батчер, staging с реакцией 👀,
+  фото как image block, документы и голос через inbox, `TRANSCRIBE_CMD`, правки, `/files`.
 
 ---
 

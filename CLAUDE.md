@@ -32,11 +32,12 @@ token and `ALLOWED_USERS`, then `docker compose up -d --build`. Locally: `.venv/
 | `app/core/liveview.py` | `LiveView`: draft (private) or progress message (groups), trailing-edge gate, 429, keepalive, delete after finals |
 | `app/core/actions.py` | topic actions shared by commands and buttons (new, stop, cancel, retry, continue, perm, card) |
 | `app/transport/callbacks.py` | inline-button dispatcher → `actions`; stale buttons answer a toast |
+| `app/ingest/batcher.py`, `classify.py`, `pipeline.py`, `files.py`, `transcribe.py` | sliding-window batcher per topic; prompt/staging matrix, forward attribution, file-name sanitizing; turn assembly (downloads, image blocks, staging consumption, reply quote); inbox with TTL cleanup; external STT command |
 | `spikes/` | phase-0 experiment scripts against the real `claude` (documentation, not product code) |
 | `tests/` | e2e (real dispatcher + real Postgres + recording Telegram session), unit, `fake_claude/` |
 
 **Request flow**: Telegram update → `AccessMiddleware` → `DedupMiddleware` → router handler →
-`TopicService` → `TopicRuntime.submit` → `ClaudeProcess` stdin → stream-json events → `LiveView` (drafts /
+`TopicService` → `Batcher` (300 ms window) → `Ingest.process_batch` (staging or turn) → `TopicRuntime.submit` → `ClaudeProcess` stdin → stream-json events → `LiveView` (drafts /
 progress edits, direct, ephemeral) and `TelegramSender.enqueue` → `outbox` table → `OutboxWorker` → Bot API
 (rich → plain fallback, `file://` → `FSInputFile`) → `message_links`. Buttons: callback → `callbacks.py` → `actions`.
 
@@ -45,7 +46,8 @@ Bot API directly from handlers — enqueue through `TelegramSender`; strings liv
 a message belongs to a topic only when `is_topic_message` is set; the claude process is only touched under
 `TopicRuntime._lock`; a turn ends only on a `result` event (EOF without it = crash → one silent retry);
 buttons first, slash commands as the text fallback — every action lives in `core/actions.py` and is reachable
-from both; live-view updates bypass the outbox (ephemeral), everything the user keeps goes through it.
+from both; live-view updates bypass the outbox (ephemeral), everything the user keeps goes through it; outbox payloads
+are produced by `sender.dump_method` (drops aiogram `Default` sentinels, keeps discriminators).
 
 **Claude Code facts that shape the code** (verified in phase 0): `claude -p` needs `--verbose`
 with stream-json; assistant events arrive one content block at a time; SIGINT ends the turn and

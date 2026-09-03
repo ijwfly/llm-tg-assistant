@@ -26,6 +26,14 @@ class UsersRepo:
     async def get(self, tg_id: int) -> dict | None:
         return _row(await self.db.fetchrow("SELECT * FROM users WHERE tg_id = $1", tg_id))
 
+    async def settings(self, tg_id: int) -> dict:
+        row = await self.db.fetchval("SELECT settings FROM users WHERE tg_id = $1", tg_id)
+        return dict(row or {})
+
+    async def update_settings(self, tg_id: int, **fields: Any) -> dict:
+        return dict(await self.db.fetchval(
+            "UPDATE users SET settings = settings || $2::jsonb WHERE tg_id = $1 RETURNING settings", tg_id, fields) or {})
+
 
 class TopicsRepo:
     def __init__(self, db: Database):
@@ -188,6 +196,52 @@ class MessageLinksRepo:
             "SELECT * FROM message_links WHERE chat_id = $1 AND tg_message_id = $2", chat_id, tg_message_id))
 
 
+class StagingRepo:
+    def __init__(self, db: Database):
+        self.db = db
+
+    async def add(self, topic_id: int, kind: str, order_group: int, payload: dict, tg_message_id: int | None) -> int:
+        return await self.db.fetchval(
+            """INSERT INTO staging_items (topic_id, kind, order_group, payload, tg_message_id)
+               VALUES ($1, $2, $3, $4, $5) RETURNING id""", topic_id, kind, order_group, payload, tg_message_id)
+
+    async def take_all(self, topic_id: int) -> list[dict]:
+        """Return the topic's staged items in consumption order and delete them."""
+        rows = await self.db.fetch(
+            "DELETE FROM staging_items WHERE topic_id = $1 RETURNING *", topic_id)
+        return sorted((dict(r) for r in rows), key=lambda r: (r["order_group"], r["id"]))
+
+    async def count(self, topic_id: int) -> int:
+        return await self.db.fetchval("SELECT count(*) FROM staging_items WHERE topic_id = $1", topic_id)
+
+    async def clear(self, topic_id: int) -> None:
+        await self.db.execute("DELETE FROM staging_items WHERE topic_id = $1", topic_id)
+
+
+class InboxRepo:
+    def __init__(self, db: Database):
+        self.db = db
+
+    async def add(self, topic_id: int | None, path: str, tg_file_id: str | None, kind: str, size: int | None) -> int:
+        return await self.db.fetchval(
+            "INSERT INTO inbox_files (topic_id, path, tg_file_id, kind, size) VALUES ($1, $2, $3, $4, $5) RETURNING id",
+            topic_id, path, tg_file_id, kind, size)
+
+    async def list_recent(self, topic_id: int, limit: int = 10) -> list[dict]:
+        return [dict(r) for r in await self.db.fetch(
+            "SELECT * FROM inbox_files WHERE topic_id = $1 ORDER BY id DESC LIMIT $2", topic_id, limit)]
+
+    async def older_than(self, cutoff_epoch: float) -> list[dict]:
+        return [dict(r) for r in await self.db.fetch(
+            "SELECT * FROM inbox_files WHERE created_at < to_timestamp($1)", cutoff_epoch)]
+
+    async def delete(self, row_id: int) -> None:
+        await self.db.execute("DELETE FROM inbox_files WHERE id = $1", row_id)
+
+    async def touch_created(self, row_id: int, epoch: float) -> None:   # tests: age a row
+        await self.db.execute("UPDATE inbox_files SET created_at = to_timestamp($2) WHERE id = $1", row_id, epoch)
+
+
 class Store:
     def __init__(self, db: Database):
         self.db = db
@@ -195,5 +249,7 @@ class Store:
         self.topics = TopicsRepo(db)
         self.outbox = OutboxRepo(db)
         self.turns = TurnsRepo(db)
+        self.staging = StagingRepo(db)
+        self.inbox = InboxRepo(db)
         self.updates = UpdatesRepo(db)
         self.links = MessageLinksRepo(db)

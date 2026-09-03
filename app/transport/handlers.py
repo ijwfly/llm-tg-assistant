@@ -10,12 +10,11 @@ from aiogram.types import CallbackQuery, Message, MessageGenerationStopped
 
 import settings
 from app.core import actions
-from app.core.runtime import TurnRequest
 from app.core.topics import TopicRef
 from app.transport import texts
 from app.transport.callbacks import on_callback
 
-QUOTE_LIMIT = 700
+CONTENT_FILTER = F.text | F.caption | F.photo | F.document | F.voice | F.audio | F.video_note | F.video
 
 
 def topic_ref(message: Message) -> TopicRef:
@@ -42,29 +41,6 @@ async def _topic(app, message: Message) -> dict:
     return await app.topics.get_or_create(topic_ref(message), topic_title(message))
 
 
-def reply_quote(message: Message, bot_id: int) -> str | None:
-    reply = message.reply_to_message
-    if reply is None or reply.forum_topic_created is not None:
-        return None
-    quoted = message.quote.text if message.quote else (reply.text or reply.caption)
-    if not quoted:
-        return None
-    quoted = quoted[:QUOTE_LIMIT]
-    who = "твой ответ" if reply.from_user and reply.from_user.id == bot_id else "сообщение"
-    return f"[в ответ на {who}: «{quoted}»]"
-
-
-def build_turn_text(message: Message, bot_id: int) -> str:
-    parts = []
-    quote = reply_quote(message, bot_id)
-    if quote:
-        parts.append(quote)
-    body = message.text or message.caption or ""
-    if body:
-        parts.append(body)
-    return "\n\n".join(parts)
-
-
 # ------------------------------------------------------------------ commands
 
 async def cmd_help(message: Message, app) -> None:
@@ -86,8 +62,7 @@ async def cmd_topics(message: Message, app) -> None:
 
 
 async def cmd_status(message: Message, app) -> None:
-    topic = await _topic(app, message)
-    await actions.show_card(app, topic)
+    await actions.show_card(app, await _topic(app, message))
 
 
 async def cmd_new(message: Message, app) -> None:
@@ -109,6 +84,11 @@ async def cmd_cancel(message: Message, app) -> None:
 
 async def cmd_retry(message: Message, app) -> None:
     await actions.retry_last(app, await _topic(app, message))
+
+
+async def cmd_files(message: Message, app) -> None:
+    topic = await _topic(app, message)
+    await actions.send_to_topic(app, topic, texts.files_list(await app.inbox.list_recent(topic["id"])))
 
 
 def resolve_cwd(raw: str) -> tuple[str | None, str | None]:
@@ -167,12 +147,16 @@ async def cmd_perm(message: Message, command: CommandObject, app) -> None:
 # ------------------------------------------------------------------ turns
 
 async def any_message(message: Message, app) -> None:
-    text = build_turn_text(message, app.bot.id)
-    if not text.strip():
+    """Everything that is not a bridge command goes through the batcher (PROJECT_SPEC 4.4)."""
+    topic = await _topic(app, message)
+    app.batcher.add(topic, message)
+
+
+async def edited_message(message: Message, app) -> None:
+    if not (message.text or message.caption):
         return
     topic = await _topic(app, message)
-    await app.store.links.link(message.chat.id, message.message_id, topic["id"], "user")
-    await actions.submit_turn(app, topic, TurnRequest(content=[{"type": "text", "text": text}]))
+    app.batcher.add(topic, message, flag="edited")
 
 
 async def on_generation_stopped(event: MessageGenerationStopped, app) -> None:
@@ -200,7 +184,9 @@ def build_router() -> Router:
     router.message.register(cmd_cd, Command("cd"))
     router.message.register(cmd_go, Command("go"))
     router.message.register(cmd_perm, Command("perm"))
-    router.message.register(any_message, F.text | F.caption)
+    router.message.register(cmd_files, Command("files"))
+    router.message.register(any_message, CONTENT_FILTER)
+    router.edited_message.register(edited_message, CONTENT_FILTER)
     router.stopped_message_generation.register(on_generation_stopped)
     router.callback_query.register(on_callback_query)
     return router

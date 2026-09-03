@@ -44,6 +44,10 @@ DAEMON_STOPPED = "⏹ Демон остановлен посреди хода. �
 COMPACTED = "🧹 Контекст сжат: было {pre_tokens} токенов."
 TURN_INTERNAL_ERROR = "💥 Внутренняя ошибка моста при обработке хода. Подробности в логе; /retry повторит."
 ANSWER_IN_FILE = "Ответ целиком — в файле."
+FILE_TOO_BIG = "⚠️ Файл больше {limit} МБ, Telegram не отдаёт такие ботам. Пропускаю его, остальное ушло."
+VOICE_TOO_BIG = "⚠️ Голосовое больше {limit} МБ. Пропускаю его."
+EDIT_SEEN = "✏️ Вижу правку — отвечаю на неё."
+FILES_EMPTY = "В этой теме файлов пока нет."
 
 PERM_SET = "🔐 Права: {mode}. Процесс перезапустится на следующем ходе, контекст остаётся."
 PERM_UNKNOWN = "Не знаю режим {mode}. Варианты: prompt, acceptEdits, plan, auto, dontAsk" + ", bypass (если разрешён)."
@@ -88,7 +92,13 @@ def go_list(projects: dict[str, str]) -> str:
     return "Куда идём:\n" + "\n".join(f"/go {alias} — {path}" for alias, path in projects.items())
 
 
-def status(topic: dict, rt: dict | None) -> str:
+def files_list(rows: list[dict]) -> str:
+    if not rows:
+        return FILES_EMPTY
+    return "Последние файлы темы:\n" + "\n".join(f"{r['kind']}: {r['path']}" for r in rows)
+
+
+def status(topic: dict, rt: dict | None, staging: int = 0) -> str:
     thread = topic["thread_id"] if topic["thread_id"] is not None else "—"
     rt = rt or {}
     proc = rt.get("process")
@@ -103,6 +113,8 @@ def status(topic: dict, rt: dict | None) -> str:
         f"Ход          {'идёт ' + format_duration(int(turn * 1000)) if turn is not None else 'нет'}"
         + (f" · в очереди {rt['queued']}" if rt.get("queued") else ""),
     ]
+    if staging:
+        lines.append(f"Staging      {staging} (уйдёт со следующим вопросом)")
     last = rt.get("last")
     if last:
         lines.append("Последний    " + turn_stats(last.get("duration_ms"), last.get("cost_usd"), last.get("num_turns")).strip("_"))

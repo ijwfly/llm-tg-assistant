@@ -1,6 +1,7 @@
 """Application object: wires store, sender, outbox worker, topics, runtimes and the dispatcher."""
 from __future__ import annotations
 
+import asyncio
 import logging
 
 from aiogram import Bot
@@ -9,6 +10,9 @@ from aiogram.methods import SetMyCommands
 import settings
 from app.core.runtime import RuntimeRegistry
 from app.core.topics import TopicService
+from app.ingest.batcher import Batcher
+from app.ingest.files import InboxService
+from app.ingest.pipeline import Ingest
 from app.store.db import Database
 from app.store.repos import Store
 from app.transport import texts
@@ -16,7 +20,7 @@ from app.transport.bot import BOT_COMMANDS, build_dispatcher
 from app.transport.outbox import OutboxWorker
 from app.transport.sender import TelegramSender
 
-VERSION = "0.2.0-phase2"
+VERSION = "0.4.0-phase4"
 log = logging.getLogger(__name__)
 
 
@@ -36,12 +40,17 @@ class App:
         self.sender = TelegramSender(self.store, self.outbox.wake)
         self.topics = TopicService(self.store)
         self.runtimes = RuntimeRegistry(self)
+        self.inbox = InboxService(self)
+        self.ingest = Ingest(self)
+        self.batcher = Batcher(self.ingest.process_batch)
         self.dp = build_dispatcher(self, self.store)
         self._stopped = False
+        self._cleanup_task: asyncio.Task | None = None
 
     async def start(self) -> None:
         self._stopped = False
         await self.outbox.start()
+        self._cleanup_task = asyncio.create_task(self._cleanup_loop(), name="inbox-cleanup")
         notify = parse_notify_chat(settings.NOTIFY_CHAT)
         if notify:
             me = await self.bot.me()
@@ -55,11 +64,21 @@ class App:
             return
         self._stopped = True
         await self.runtimes.shutdown_all()
+        if self._cleanup_task:
+            self._cleanup_task.cancel()
         notify = parse_notify_chat(settings.NOTIFY_CHAT)
         if notify:
             await self.sender.send_text(notify[0], notify[1], texts.SHUTDOWN)
         await self.outbox.stop()
         log.info("app stopped")
+
+    async def _cleanup_loop(self) -> None:
+        while True:
+            try:
+                await self.inbox.cleanup()
+            except Exception:
+                log.exception("inbox cleanup failed")
+            await asyncio.sleep(6 * 3600)
 
     async def register_commands(self) -> None:
         await self.bot(SetMyCommands(commands=BOT_COMMANDS))

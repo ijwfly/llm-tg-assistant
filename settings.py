@@ -59,6 +59,15 @@ MIN_SEGMENT_CHARS: int = 120         # shorter text before a tool call is merged
 ANSWER_FILE_THRESHOLD: int = 50_000  # longer answers go as a file
 INBOX_DIR: str = os.environ.get("INBOX_DIR", "/data/inbox")   # downloaded and generated files
 
+# --- Ingest ----------------------------------------------------------------------
+BATCH_WINDOW_MS: int = 300           # sliding window: messages of a topic within it form one turn
+TRANSCRIBE_CMD: str | None = None    # e.g. "opusdec --quiet --rate 16000 --force-wav {file} {wav} && whisper-cli -m … -f {wav} -nt"
+TRANSCRIBE_TIMEOUT: float = 180.0
+INBOX_TTL_DAYS: float = 7.0
+REACTIONS: bool = True               # 👀 on staged messages
+FILE_MAX_MB: int = 20                # Bot API download limit
+VOICE_MAX_MB: int = 25
+
 # --- Outbox / delivery ----------------------------------------------------------
 OUTBOX_POLL_INTERVAL: float = 0.5        # seconds between idle polls of the outbox
 OUTBOX_RETRY_BASE_SECS: float = 1.0      # backoff base for non-429 delivery errors

@@ -33,6 +33,8 @@ settings.DRAFT_MIN_INTERVAL = 0.05
 settings.EDIT_MIN_INTERVAL = 0.05
 settings.DRAFT_KEEPALIVE = 0.3
 settings.PROGRESS_DELAY = 0.0
+settings.BATCH_WINDOW_MS = 60
+settings.TRANSCRIBE_CMD = None
 
 from aiogram import Bot  # noqa: E402
 
@@ -42,7 +44,7 @@ from tests.support.fake_claude import FakeClaude  # noqa: E402
 from tests.support.session import RecordingSession  # noqa: E402
 from tests.support.spy import TelegramSpy  # noqa: E402
 
-TABLES = ["message_links", "outbox", "turns", "processed_updates", "topics", "users"]
+TABLES = ["message_links", "outbox", "turns", "staging_items", "inbox_files", "processed_updates", "topics", "users"]
 
 
 @pytest.fixture(autouse=True)

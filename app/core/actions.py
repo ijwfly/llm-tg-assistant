@@ -16,6 +16,7 @@ async def send_to_topic(app, topic: dict, text: str, *, reply_markup=None, turn_
 
 async def new_context(app, topic: dict) -> str:
     await app.runtimes.get(topic).restart_context()
+    await app.store.staging.clear(topic["id"])
     await send_to_topic(app, topic, texts.NEW_CONTEXT)
     return texts.TOAST_NEW
 
@@ -69,20 +70,21 @@ async def set_permission_mode(app, topic: dict, mode: str) -> str:
     return texts.PERM_SET.format(mode=mode)
 
 
-def topic_card(app, topic: dict) -> tuple[str, object]:
+async def topic_card(app, topic: dict) -> tuple[str, object]:
     rt = app.runtimes.peek(topic["id"])
     state = rt.status() if rt else None
     running = bool(state and (state.get("turn") is not None or state.get("queued")))
-    return texts.status(topic, state), topic_card_kb(topic["id"], running=running)
+    staging = await app.store.staging.count(topic["id"])
+    return texts.status(topic, state, staging), topic_card_kb(topic["id"], running=running)
 
 
 async def show_card(app, topic: dict) -> None:
-    text, kb = topic_card(app, topic)
+    text, kb = await topic_card(app, topic)
     await send_to_topic(app, topic, text, reply_markup=kb, role="card")
 
 
 async def refresh_card(app, topic: dict, message_id: int) -> str:
-    text, kb = topic_card(app, topic)
+    text, kb = await topic_card(app, topic)
     await app.sender.edit_text(topic["chat_id"], topic["thread_id"], message_id, text, reply_markup=kb,
                                topic_id=topic["id"])
     return texts.TOAST_REFRESHED

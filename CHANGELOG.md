@@ -36,6 +36,12 @@ All notable changes to this project are documented here. The format follows
   long answers as a file; short text segments merged; inline buttons on verdicts (`🔁`, `🔓`,
   `▶️`), topic card `/status` with `🆕 ⏸ 🔄 ✖` and in-place redraw, shared actions for commands and
   buttons, `/perm`, command menu reduced to `status`/`new`/`help`. See `specs/PHASE_3_STREAMING.md`.
+- **Input pipeline (phase 4)** — sliding-window batcher (album, forwards, text+photo+voice =
+  one turn), prompt/staging matrix (forwards and captionless files wait for the next question,
+  acknowledged with a 👀 reaction), photos as image blocks plus inbox copies, documents in the
+  inbox with paths, voice via `TRANSCRIBE_CMD` with a 🎤 echo, edited messages as new turns,
+  `/files`, inbox TTL cleanup, per-user `forward_as_prompt` / `voice_as_prompt` settings.
+  See `specs/PHASE_4_INGEST.md`.
 - **Test infrastructure** — `scripts/test.sh` with a disposable Postgres, recording Telegram
   session with failure injection, spy, update builders, fake `claude` for the coming phases.
   See `specs/E2E_TESTS.md`.
