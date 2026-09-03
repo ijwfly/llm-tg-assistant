@@ -4,8 +4,10 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
 import time
 from dataclasses import dataclass, field
+from pathlib import Path
 
 import settings
 from app.bridge.rules import Rule, always_rule, permission_update
@@ -15,10 +17,17 @@ from app.transport import texts
 log = logging.getLogger(__name__)
 
 PERMISSION, QUESTION, PLAN = "permission", "question", "plan"
+SEND_FILE_TOOL = "mcp__tgbridge__send_file"
+PHOTO_SUFFIXES = {".jpg", ".jpeg", ".png", ".gif", ".webp"}
+FILE_LIMIT = 50 * 1024 * 1024
 
 
 def deny(message: str) -> dict:
     return {"behavior": "deny", "message": message}
+
+
+def _human_size(n: int) -> str:
+    return f"{n} B" if n < 1024 else (f"{n // 1024} KB" if n < 1024 * 1024 else f"{n / (1024 * 1024):.1f} MB")
 
 
 @dataclass
@@ -79,7 +88,11 @@ class PromptService:
         if rt is None or rt.current is None:
             return deny(texts.DENY_MSG_NO_TURN)
         args = request.get("args") or {}
+        if request.get("tool") == "send_file":
+            return await self.send_file(rt, args)
         tool_name = str(args.get("tool_name") or "?")
+        if tool_name == SEND_FILE_TOOL:   # the bridge's own tool: a file from the work dir to the user's own chat
+            return {"behavior": "allow", "updatedInput": args.get("input") or {}}
         tool_input = args.get("input") if isinstance(args.get("input"), dict) else {}
         kind = QUESTION if tool_name == "AskUserQuestion" else PLAN if tool_name == "ExitPlanMode" else PERMISSION
         topic = await self.app.store.topics.get_by_id(rt.topic_id)
@@ -112,6 +125,38 @@ class PromptService:
                 state.progress.waiting = None
                 if state.live:
                     state.live.touch()
+
+    # ---------------------------------------------------------------- send_file (PROJECT_SPEC 4.8)
+
+    async def send_file(self, rt, args: dict) -> dict:
+        topic = await self.app.store.topics.get_by_id(rt.topic_id)
+        raw = str(args.get("path") or "").strip()
+        if not raw:
+            return {"ok": False, "text": "Error: path is required."}
+        path = Path(os.path.expanduser(raw))
+        if not path.is_absolute():
+            path = Path(topic["cwd"]) / path
+        try:
+            path = path.resolve()
+        except OSError:
+            return {"ok": False, "text": f"Error: cannot resolve {raw}."}
+        roots = [Path(settings.WORK_ROOT).resolve()] + [Path(d).resolve() for d in settings.ADD_DIRS]
+        if not any(path == r or r in path.parents for r in roots):
+            return {"ok": False, "text": f"Error: {path} is outside the allowed directories."}
+        if not path.is_file():
+            return {"ok": False, "text": f"Error: {path} is not a file."}
+        size = path.stat().st_size
+        if size > FILE_LIMIT:
+            return {"ok": False, "text": f"Error: {path.name} is {size // (1024 * 1024)} MB, Telegram takes up to 50 MB."}
+        caption = str(args.get("caption") or "")[:1024] or None
+        turn_id = rt.current.turn_id if rt.current else None
+        if path.suffix.lower() in PHOTO_SUFFIXES and size <= 10 * 1024 * 1024:
+            await self.app.sender.send_photo(topic["chat_id"], topic["thread_id"], str(path), caption=caption,
+                                             topic_id=topic["id"], turn_id=turn_id, role="file")
+        else:
+            await self.app.sender.send_document(topic["chat_id"], topic["thread_id"], str(path), caption=caption,
+                                                topic_id=topic["id"], turn_id=turn_id, role="file")
+        return {"ok": True, "text": f"File {path.name} ({_human_size(size)}) sent to the chat."}
 
     def _set_waiting(self, rt, p: PendingPrompt) -> None:
         state = rt.current

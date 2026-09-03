@@ -43,7 +43,8 @@ def mcp_config(token: str) -> str:
     return json.dumps({"mcpServers": {"tgbridge": {
         "command": sys.executable, "args": [str(MCP_SERVER)],
         "env": {"TGBRIDGE_SOCKET": settings.BRIDGE_SOCKET, "TGBRIDGE_TOKEN": token,
-                "TGBRIDGE_TIMEOUT": str(int(timeout))}}}})
+                "TGBRIDGE_TIMEOUT": str(int(timeout)),
+                "TGBRIDGE_SEND_FILE": "1" if settings.BRIDGE_SEND_FILE_TOOL else "0"}}}})
 
 
 def soul_file(topic: dict) -> Path | None:
@@ -114,6 +115,8 @@ def build_argv(topic: dict, *, resume: bool, prompt_token: str | None = None) ->
         argv += ["--disallowed-tools", ",".join(settings.DISALLOWED_TOOLS)]
     if settings.CLAUDE_SETTINGS:
         argv += ["--settings", settings.CLAUDE_SETTINGS]
+    if settings.FORWARD_SUBAGENT_TEXT:
+        argv += ["--forward-subagent-text"]
     for d in settings.ADD_DIRS:
         argv += ["--add-dir", d]
     return argv

@@ -15,6 +15,7 @@ import sys
 SOCKET = os.environ.get("TGBRIDGE_SOCKET", "")
 TOKEN = os.environ.get("TGBRIDGE_TOKEN", "")
 TIMEOUT = float(os.environ.get("TGBRIDGE_TIMEOUT", "1900"))
+SEND_FILE = os.environ.get("TGBRIDGE_SEND_FILE", "0") == "1"
 
 TOOLS = [{
     "name": "approve",
@@ -26,15 +27,29 @@ TOOLS = [{
         "additionalProperties": True,
     },
 }]
+SEND_FILE_TOOL = {
+    "name": "send_file",
+    "description": ("Send a file from the working directory to the person in the Telegram chat "
+                    "(images go as photos, everything else as a document; up to 50 MB). "
+                    "Use it whenever the person should receive a file rather than read a path."),
+    "inputSchema": {
+        "type": "object",
+        "properties": {"path": {"type": "string", "description": "absolute path or relative to the working directory"},
+                       "caption": {"type": "string", "description": "optional caption, up to 1024 characters"}},
+        "required": ["path"],
+    },
+}
+if SEND_FILE:
+    TOOLS.append(SEND_FILE_TOOL)
 
 
 def deny(message: str) -> dict:
     return {"behavior": "deny", "message": message}
 
 
-def ask_daemon(args: dict) -> dict:
+def ask_daemon(args: dict, tool: str = "approve") -> dict:
     """One request, one reply. Any failure is a deny with the reason, so the tool never hangs forever."""
-    request = {"token": TOKEN, "tool": "approve", "tool_use_id": args.get("tool_use_id"), "args": args}
+    request = {"token": TOKEN, "tool": tool, "tool_use_id": args.get("tool_use_id"), "args": args}
     try:
         with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as s:
             s.settimeout(TIMEOUT)
@@ -84,11 +99,16 @@ def main() -> None:
         elif method == "tools/list":
             reply(msg_id, {"tools": TOOLS})
         elif method == "tools/call":
-            if params.get("name") != "approve":
-                reply(msg_id, error={"code": -32602, "message": f"unknown tool {params.get('name')}"})
-                continue
-            decision = ask_daemon(params.get("arguments") or {})
-            reply(msg_id, {"content": [{"type": "text", "text": json.dumps(decision, ensure_ascii=False)}]})
+            name = params.get("name")
+            if name == "approve":
+                decision = ask_daemon(params.get("arguments") or {})
+                reply(msg_id, {"content": [{"type": "text", "text": json.dumps(decision, ensure_ascii=False)}]})
+            elif name == "send_file" and SEND_FILE:
+                result = ask_daemon(params.get("arguments") or {}, tool="send_file")
+                text = result.get("text") or result.get("message") or json.dumps(result, ensure_ascii=False)
+                reply(msg_id, {"content": [{"type": "text", "text": text}], "isError": not result.get("ok", False)})
+            else:
+                reply(msg_id, error={"code": -32602, "message": f"unknown tool {name}"})
         elif method == "ping":
             reply(msg_id, {})
         else:

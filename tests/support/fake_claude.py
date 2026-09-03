@@ -55,6 +55,11 @@ def prompt_tool(tool_name: str, tool_input: dict, tool_use_id: str = "toolu_1") 
     return {"prompt_tool": {"tool_name": tool_name, "input": tool_input, "tool_use_id": tool_use_id}}
 
 
+def mcp_tool(name: str, arguments: dict | None = None) -> dict:
+    """Scenario step: call any tool of the bridge MCP server (e.g. send_file); `list` lists the tools."""
+    return {"mcp_tool": {"name": name, "arguments": arguments or {}}}
+
+
 def question(*questions: dict) -> dict:
     return {"questions": list(questions)}
 
@@ -137,6 +142,12 @@ class FakeClaude:
             else:
                 out.append("\n".join(b.get("text", "") for b in content if b.get("type") == "text"))
         return out
+
+    def mcp_results(self) -> list[dict]:
+        return [rec["mcp_result"] for rec in self.log() if "mcp_result" in rec]
+
+    def mcp_tools(self) -> list[list[str]]:
+        return [rec["mcp_tools"] for rec in self.log() if "mcp_tools" in rec]
 
     def decisions(self) -> list[dict]:
         """Decisions the prompt tool returned, in order."""

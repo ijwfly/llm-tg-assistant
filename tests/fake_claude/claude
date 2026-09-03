@@ -11,7 +11,8 @@ specs/PHASE_0_SPIKE.md). Behaviour:
   and replays its `events`; an exhausted queue exits with code 3 (the error-path test);
 * scenario steps: a stream-json event (strings `{session_id}` are substituted), `{"delay": s}`,
   or `{"prompt_tool": {"tool_name", "input", "tool_use_id"}}` which really calls the MCP server
-  from `--mcp-config` and logs `{"prompt_decision": ...}`;
+  from `--mcp-config` and logs `{"prompt_decision": ...}`, or `{"mcp_tool": {"name", "arguments"}}`
+  (logs `{"mcp_result": {text, is_error}}`; name `list` logs `{"mcp_tools": [...]}`);
 * SIGINT while replaying → `[Request interrupted by user]` + `result/error_during_execution`, exit 0.
 """
 import json
@@ -120,15 +121,21 @@ class Mcp:
             if msg.get("id") == self._id:
                 return msg
 
-    def call_tool(self, arguments):
-        resp = self.request("tools/call", {"name": self.tool, "arguments": arguments,
+    def call_tool(self, arguments, name=None):
+        resp = self.request("tools/call", {"name": name or self.tool, "arguments": arguments,
                                            "_meta": {"claudecode/toolUseId": arguments.get("tool_use_id")}})
-        content = resp.get("result", {}).get("content", [])
+        result = resp.get("result", {})
+        content = result.get("content", [])
         text = next((c.get("text") for c in content if c.get("type") == "text"), "{}")
+        if name and name != self.tool:
+            return {"text": text, "is_error": bool(result.get("isError")), "error": resp.get("error")}
         try:
             return json.loads(text)
         except json.JSONDecodeError:
             return {"raw": text}
+
+    def list_tools(self):
+        return [t["name"] for t in self.request("tools/list", {}).get("result", {}).get("tools", [])]
 
     def close(self):
         try:
@@ -192,6 +199,14 @@ def main():
                     mcp = Mcp(args["mcp_config"], args["prompt_tool"])
                 decision = mcp.call_tool(fill(step["prompt_tool"], ctx))
                 log({"prompt_decision": decision, "tool_use_id": step["prompt_tool"].get("tool_use_id")})
+            elif "mcp_tool" in step:
+                if mcp is None:
+                    mcp = Mcp(args["mcp_config"], args["prompt_tool"])
+                spec = step["mcp_tool"]
+                if spec.get("name") == "list":
+                    log({"mcp_tools": mcp.list_tools()})
+                else:
+                    log({"mcp_result": mcp.call_tool(fill(spec.get("arguments") or {}, ctx), name=spec["name"])})
             elif "exit" in step:
                 sys.stderr.write(str(step.get("stderr", "fake claude crashed")) + "\n")
                 sys.stderr.flush()
