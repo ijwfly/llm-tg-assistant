@@ -7,7 +7,7 @@ from datetime import datetime, timezone
 
 import aiogram.methods
 from aiogram import Bot
-from aiogram.exceptions import TelegramBadRequest, TelegramRetryAfter
+from aiogram.exceptions import TelegramBadRequest, TelegramForbiddenError, TelegramRetryAfter
 from aiogram.methods import SendMessage
 from aiogram.types import FSInputFile, Message
 
@@ -16,6 +16,10 @@ from app.render.markdown import PLAIN_LIMIT, split_text
 from app.store.repos import OutboxRepo, OutboxRow, MessageLinksRepo
 
 log = logging.getLogger(__name__)
+
+
+class PermanentDeliveryError(Exception):
+    """A Bad Request that will not succeed on retry."""
 
 
 class OutboxWorker:
@@ -84,10 +88,12 @@ class OutboxWorker:
         try:
             result = await self.bot(method)
         except TelegramBadRequest as e:
-            if row.method != "SendRichMessage":
-                raise
-            log.warning("outbox %s: rich message rejected (%s), falling back to plain text", row.id, e.message)
-            return await self._send_plain_fallback(row)
+            if "not modified" in e.message:      # an edit to identical content: nothing to do
+                return None
+            if row.method == "SendRichMessage":
+                log.warning("outbox %s: rich message rejected (%s), falling back to plain text", row.id, e.message)
+                return await self._send_plain_fallback(row)
+            raise PermanentDeliveryError(e)
         return result.message_id if isinstance(result, Message) else None
 
     async def _send_plain_fallback(self, row: OutboxRow) -> int | None:
@@ -112,7 +118,12 @@ class OutboxWorker:
         except TelegramRetryAfter as e:
             log.warning("outbox %s: rate limited for %ss (%s)", row.id, e.retry_after, row.topic_key)
             await self.repo.reschedule(row.id, e.retry_after, str(e), count_attempt=False)
-        except Exception as e:  # network errors, API errors, bad payloads
+        except (PermanentDeliveryError, TelegramForbiddenError) as e:
+            # Telegram refused the payload for good (message gone, bot blocked): retrying would only
+            # block the topic's queue behind this row.
+            log.warning("outbox %s: permanent failure: %s", row.id, e)
+            await self.repo.mark_failed(row.id, repr(e))
+        except Exception as e:  # network errors, 5xx, bad payloads
             age = (datetime.now(timezone.utc) - row.created_at).total_seconds()
             if age > settings.OUTBOX_MAX_AGE_SECS:
                 log.error("outbox %s: giving up after %.0fs: %s", row.id, age, e)

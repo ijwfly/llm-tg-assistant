@@ -5,6 +5,13 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Fixed
+
+- **Outbox stall on permanent Telegram errors** — an in-place card edit with identical content
+  (`message is not modified`) was retried forever and, being the head of the topic queue, blocked
+  every later message of that topic. Identical edits now count as delivered; other `Bad Request`
+  and `Forbidden` errors mark the row `failed` immediately (found on the phase-3 live check).
+
 ### Added
 
 - **Project spec** — `specs/PROJECT_SPEC.md`: topic = Claude Code session, raw `claude -p`
