@@ -7,6 +7,22 @@ All notable changes to this project are documented here. The format follows
 
 ### Changed
 
+- **Topics are named after their folder.** A topic the user created without a name is renamed to its
+  folder at the first message (before: to the first prompt after the first turn); «Новая тема» from the
+  sessions card, `/project <path>` and `/project new` name the topic after the folder too. Until `/rename`
+  pins a name it follows the folder when the topic moves. See `specs/PROJECT_SPEC.md` §4.2.
+
+### Added
+
+- **Paged sessions card.** The «Sessions» list shows `SESSIONS_PAGE_SIZE` (8) rows per page with
+  «Назад» / «Дальше» buttons that redraw the card in place, a page counter in the header and a
+  «Скрыть» button; before, the list was cut at 12 rows with no way to see the rest. The card is
+  markdown (folders in bold, root in code) and each button is just the folder name (plus the time when a folder
+  repeats on the page) instead of a session-id prefix. See
+  `specs/PROJECT_SPEC.md` §4.3.1.
+
+### Changed
+
 - **Compose mirrors host paths.** `WORK_ROOT` and `CLAUDE_HOME` are mounted into the `bot` container at
   the same absolute paths as on the host (instead of `/work` and `/home/app/.claude`), so `claude`
   runs with the terminal's cwd, transcripts of terminal and bot sessions share one folder per project,

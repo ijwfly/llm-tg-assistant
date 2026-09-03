@@ -28,14 +28,14 @@ Human-facing setup and operations: `README.md`.
 | `app/transport/middleware.py` | `AccessMiddleware` (ALLOWED_USERS/ALLOWED_CHATS, silent), `DedupMiddleware` (update_id, marked before handling) |
 | `app/transport/handlers.py` | commands and messages; `build_router()` per dispatcher; `topic_ref()` maps a message to `(chat_id, thread_id)` |
 | `app/transport/sender.py`, `outbox.py` | the only door for outgoing calls: rows in `outbox`, worker delivers per-topic in order, parallel across topics, 429/backoff/failed |
-| `app/transport/texts.py` | every user-facing string (Russian) |
+| `app/transport/texts.py` | every user-facing string (Russian); `md_escape` for user text inside markdown cards |
 | `app/core/topics.py` | `TopicRef`, `TopicService` |
 | `app/core/runtime.py` | `TopicRuntime` (queue, worker task, claude process, idle timer, turn loop, verdicts), `RuntimeRegistry` |
 | `app/bridge/cli.py`, `process.py`, `events.py` | argv/env builder (permission-mode map, prompt tool + inline `--mcp-config`, secret stripping), `ClaudeProcess` (spawn, stdin, events, SIGINT, graceful stop), typed stream-json events |
-| `app/bridge/sessions.py` | read-only index of Claude Code transcripts (`projects/<sanitized cwd>/<id>.jsonl`): titles, machine-wide listing inside `WORK_ROOT`, lookup by id/prefix/name |
+| `app/bridge/sessions.py` | read-only index of Claude Code transcripts (`projects/<sanitized cwd>/<id>.jsonl`): titles, machine-wide listing inside `WORK_ROOT` (offset/limit pages), lookup by id/prefix/name |
 | `app/bridge/mcp_server.py`, `socket_server.py`, `rules.py` | stdlib-only stdio MCP server (`approve`) launched by `claude`, forwards to the daemon's unix socket (`BRIDGE_SOCKET`); `BridgeSocket` server; «Всегда» rule matrix, `updatedPermissions`, forgetting rules in `.claude/settings.local.json` |
 | `app/core/prompts.py` | `PromptService`: pending permission/question/plan prompts, cards, buttons, awaited text, timeouts, abandon on cancel; token → runtime registry |
-| `app/render/markdown.py`, `progress.py`, `keyboards.py`, `cards.py`, `tts.py` | fence-aware splitter and preview rules; progress line, tool trail, draft/progress content; inline keyboards and `callback_data` codec (topic card with switches and the «Ещё» page); permission (diff/masking), question and plan cards; prose extraction for TTS |
+| `app/render/markdown.py`, `progress.py`, `keyboards.py`, `cards.py`, `tts.py` | fence-aware splitter and preview rules; progress line, tool trail, draft/progress content; inline keyboards and `callback_data` codec (topic card with switches and the «Ещё» page, paged sessions list `sp:<topic>:<page>`); permission (diff/masking), question and plan cards; prose extraction for TTS |
 | `bridge_preamble.md` | system-prompt preamble (Telegram context); glued with the persona (`SOUL_PATH` / `/soul`) into one `--append-system-prompt-file` per topic by `bridge/cli.py` |
 | `app/core/prefs.py`, `voice.py` | per-topic / per-user switches with defaults from `settings` (cycles for perm/model/effort); voice answer via `TTS_CMD` after the turn |
 | `app/core/liveview.py` | `LiveView`: draft (private) or progress message (groups), trailing-edge gate, 429, keepalive, delete after finals |
@@ -60,7 +60,8 @@ from both; button labels are words, never bare emoji (user decision); live-view 
 are produced by `sender.dump_method` (drops aiogram `Default` sentinels, keeps discriminators); `mcp_server.py` must stay
 stdlib-only (it runs from the topic's cwd under the daemon's interpreter and never imports the app); a pending prompt is
 resolved exactly once (`PendingPrompt.future`), and every path that ends a turn calls `prompts.abandon`; `topics.settings`
-(jsonb) holds per-topic flags (`fork`, `title_implicit`) — merge through `TopicsRepo.update_settings`; the only direct Bot API
+(jsonb) holds per-topic flags (`fork`, `title_implicit` = the name follows the folder until `/rename`) — merge through `TopicsRepo.update_settings`;
+topics are named after their folder (`actions.folder_name`), never after the prompt; the only direct Bot API
 calls outside the live view are `createForumTopic` / `deleteForumTopic` in `actions` (their result decides what happens next).
 
 **Claude Code facts that shape the code** (verified in phase 0): `claude -p` needs `--verbose`
@@ -86,7 +87,7 @@ Every task goes through the same loop:
 
 ### Running
 
-- The single entry point is `bash scripts/test.sh`. It starts the test database container if it is not already running, waits for it to become healthy, runs the whole suite, and tears the container down on exit (via a shell `trap`, so teardown also happens on failure). Extra arguments are forwarded to the test runner, so `bash scripts/test.sh -k reply -v` works.
+- The single entry point is `bash scripts/test.sh`. The test stack runs under its own compose project name (`llm-tg-assistant-test`), so its teardown never touches a production `docker compose up` from the same checkout. It starts the test database container if it is not already running, waits for it to become healthy, runs the whole suite, and tears the container down on exit (via a shell `trap`, so teardown also happens on failure). Extra arguments are forwarded to the test runner, so `bash scripts/test.sh -k reply -v` works.
 - A fully containerized variant (`scripts/test_docker.sh`) builds the app image and runs the same suite inside compose; use it for CI or when the host environment is suspect.
 - **All tests must pass before work is considered done.** Never commit on red. Never skip, weaken or delete a test to make it pass. A test that fails after your change is your bug until proven otherwise.
 

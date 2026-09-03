@@ -188,16 +188,18 @@ def inside(path: str | None, root: str) -> bool:
     return resolved == root_path or root_path in resolved.parents
 
 
-def machine_sessions(root: str, limit: int = 12, first_cwd: str | None = None) -> tuple[list[SessionInfo], int]:
+def machine_sessions(root: str, limit: int = 12, first_cwd: str | None = None,
+                     offset: int = 0) -> tuple[list[SessionInfo], int, int]:
     """Every session on the machine whose folder lies inside `root`, newest first (the sessions of
-    `first_cwd` come first). Returns (sessions, count of sessions outside the root)."""
+    `first_cwd` come first), one page of `limit` rows from `offset`.
+    Returns (page, count of sessions inside the root, count outside it)."""
     everything = all_sessions()
     within = [s for s in everything if inside(s.cwd, root)]
     outside = len(everything) - len(within)
     if first_cwd:
         first = Path(first_cwd).resolve()
         within.sort(key=lambda s: 0 if Path(s.cwd or "").resolve() == first else 1)
-    return within[:limit], outside
+    return within[offset:offset + limit], len(within), outside
 
 
 def find_sessions(query: str, cwd: str | None = None) -> list[SessionInfo]:

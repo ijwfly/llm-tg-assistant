@@ -53,6 +53,7 @@ QUESTION_TIMEOUT_SECS: float = 1800.0    # unanswered question / plan card -> de
 PERMISSION_DIFF_LINES: int = 60          # diff lines shown on Edit/Write cards
 
 # --- Turns / processes ------------------------------------------------------------
+SESSIONS_PAGE_SIZE: int = 8            # rows per page of the sessions card («Назад» / «Дальше»)
 IDLE_TIMEOUT_SECS: float = 1800.0    # idle process is stopped after this; next turn resumes the session
 TURN_TIMEOUT_SECS: float = 3600.0    # a turn longer than this is interrupted
 TURN_QUEUE_MAX: int = 32             # messages waiting behind a running turn, per topic

@@ -55,8 +55,8 @@ VOICE_TOO_BIG = "⚠️ Голосовое больше {limit} МБ. Пропу
 EDIT_SEEN = "✏️ Вижу правку — отвечаю на неё."
 FILES_EMPTY = "В этой теме файлов пока нет."
 
-SESSIONS_EMPTY = "Внутри {root} сессий Claude Code пока нет."
-SESSIONS_OUTSIDE = "ещё {n} вне {root} — бот туда не ходит"
+SESSIONS_EMPTY = "Внутри `{root}` сессий Claude Code пока нет."
+SESSIONS_OUTSIDE = "ещё {n} вне `{root}` — бот туда не ходит"
 SESSION_TOPIC_HELLO = "Продолжаю сессию {short} · «{title}»\nПапка: {cwd}\nПиши сюда."
 PROJECT_NEW_CREATED = "📁 Создала папку {path}."
 PROJECT_NEW_BAD_NAME = "Имя папки — одно слово без / и .. : /project new my-app"
@@ -187,15 +187,22 @@ def go_list(projects: dict[str, str]) -> str:
     return "Куда идём:\n" + "\n".join(f"/go {alias} — {path}" for alias, path in projects.items())
 
 
-def sessions_card(root: str, rows: list[tuple[str, str, str, str, str]], outside: int = 0) -> str:
-    """rows: (folder relative to root, short id, ago, title, where)."""
+def md_escape(text: str) -> str:
+    """Backslash-escape markdown punctuation in user-provided text (session titles, topic names)."""
+    return "".join("\\" + c if c in "\\*_`[]<>~|#" else c for c in text)
+
+
+def sessions_card(root: str, rows: list[tuple[str, str, str, str, str]], outside: int = 0,
+                  page: int = 0, pages: int = 1) -> str:
+    """Markdown. rows: (folder relative to root, short id, ago, title, where); page/pages for the header."""
     if not rows:
         text = SESSIONS_EMPTY.format(root=root)
     else:
-        lines = [f"Сессии Claude Code в {root}:"]
+        header = f"Сессии Claude Code в `{root}`" + (f" · стр. {page + 1}/{pages}" if pages > 1 else "")
+        lines = [header + ":"]
         for folder, short, when, title, where in rows:
-            line = f"▸ {folder} · {short} · {when} · «{title[:60]}»"
-            lines.append(line + (f" · {where}" if where else ""))
+            line = f"▸ **{md_escape(folder)}** · {short} · {when} · «{md_escape(title[:60])}»"
+            lines.append(line + (f" · {md_escape(where)}" if where else ""))
         text = "\n".join(lines)
     if outside:
         text += "\n" + SESSIONS_OUTSIDE.format(n=outside, root=root)

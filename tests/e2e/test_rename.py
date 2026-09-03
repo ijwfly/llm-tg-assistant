@@ -36,14 +36,14 @@ async def test_rename_without_a_name_explains(app, spy, fake_claude):
     assert spy.last_text() == "Как назвать? /rename <имя>."
 
 
-async def test_implicit_topic_is_named_after_the_first_prompt_once(app, spy, fake_claude):
+async def test_implicit_topic_is_named_after_its_folder_at_once(app, spy, fake_claude):
     fake_claude.text_turn(LONG)
     await feed(app, implicit_topic_update("Разберись, почему падает тест авторизации в CI и почини"))
     await wait_turn_finished(app)
     edit = spy.calls("EditForumTopic")[-1]
-    assert edit["message_thread_id"] == 7 and edit["name"] == "Разберись, почему падает тест авторизаци"   # 40 chars
+    assert edit["message_thread_id"] == 7 and edit["name"] == "work"          # basename of DEFAULT_CWD
     topic = (await app.topics.list_all())[0]
-    assert topic["title"] == "Разберись, почему падает тест авторизаци" and topic["settings"]["title_implicit"] is False
+    assert topic["title"] == "work" and topic["settings"]["title_implicit"] is True   # still follows the folder
     assert fake_claude.stdin_texts() == ["Разберись, почему падает тест авторизации в CI и почини"]   # no /rename turn
     fake_claude.text_turn("Второй ответ, тоже достаточно длинный, чтобы уйти сразу и не ждать следующего сегмента текста. " * 2)
     await feed(app, implicit_topic_update("второй вопрос"))

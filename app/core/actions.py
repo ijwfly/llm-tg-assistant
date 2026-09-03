@@ -236,19 +236,29 @@ def _folder_label(cwd: str | None, root: str) -> str:
     return "." if rel == "." else rel
 
 
-async def sessions_card(app, topic: dict) -> str:
-    """Every session of the machine inside WORK_ROOT (PROJECT_SPEC 4.3.1): the topic's own folder first."""
+async def sessions_card(app, topic: dict, page: int = 0, message_id: int | None = None) -> str:
+    """Every session of the machine inside WORK_ROOT (PROJECT_SPEC 4.3.1): the topic's own folder first,
+    `SESSIONS_PAGE_SIZE` rows per page. With `message_id` the existing card is edited in place («Назад»/«Дальше»)."""
     root = settings.WORK_ROOT
-    found, outside = sessions.machine_sessions(root, first_cwd=topic["cwd"])
+    size = max(1, settings.SESSIONS_PAGE_SIZE)
+    page = max(0, page)
+    found, total, outside = sessions.machine_sessions(root, limit=size, first_cwd=topic["cwd"], offset=page * size)
+    pages = max(1, -(-total // size))
+    if not found and page > 0:                       # the list shrank under the user: last page instead
+        page = pages - 1
+        found, total, outside = sessions.machine_sessions(root, limit=size, first_cwd=topic["cwd"], offset=page * size)
     rows, entries = [], []
     topic_dir = Path(topic["cwd"]).resolve()
     for s in found:
         same = Path(s.cwd or "").resolve() == topic_dir
         rows.append((_folder_label(s.cwd, root), s.short, sessions.ago(s.mtime), s.title, await _where(app, topic, s.session_id)))
-        entries.append((s.session_id, same))
-    text = texts.sessions_card(root, rows, outside)
-    kb = sessions_kb(topic["id"], entries) if entries else None
-    await send_to_topic(app, topic, text, reply_markup=kb, role="card")
+        entries.append((s.session_id, same, folder_name(s.cwd or "?"), sessions.ago(s.mtime)))
+    text = texts.sessions_card(root, rows, outside, page, pages)
+    kb = sessions_kb(topic["id"], entries, page, pages) if entries else None
+    if message_id is not None:
+        await app.sender.edit_markdown(topic["chat_id"], topic["thread_id"], message_id, text, reply_markup=kb, topic_id=topic["id"])
+    else:
+        await app.sender.send_markdown(topic["chat_id"], topic["thread_id"], text, reply_markup=kb, topic_id=topic["id"], role="card")
     return text
 
 
@@ -263,9 +273,9 @@ async def topic_from_session(app, topic: dict, query: str) -> str:
         text = texts.RESUMED_CWD_KEPT.format(cwd=session.cwd, kept=topic["cwd"])
         await send_to_topic(app, topic, text)
         return text
-    name = f"{os.path.basename(cwd)}: {session.title}"[:60]
+    name = folder_name(cwd)
     new_topic, error = await create_topic(app, topic, name, cwd=cwd, session_id=uuid.UUID(session.session_id),
-                                          session_resumable=True)
+                                          session_resumable=True, topic_settings={"title_implicit": True})
     if error:
         await send_to_topic(app, topic, error)
         return error
@@ -314,6 +324,8 @@ async def resume_session(app, topic: dict, query: str) -> str:
     await app.store.topics.update_settings(topic["id"], fork=None)
     updated = await app.store.topics.update(topic["id"], **fields)
     await send_to_topic(app, topic, texts.RESUMED.format(short=session.short, title=session.title[:80], cwd=updated["cwd"]))
+    if cwd and cwd != topic["cwd"]:
+        await name_implicit_topic(app, updated)
     if session.cwd and not cwd:
         await send_to_topic(app, topic, texts.RESUMED_CWD_KEPT.format(cwd=session.cwd, kept=updated["cwd"]))
     return texts.TOAST_RESUMED
@@ -378,7 +390,8 @@ async def project_topic(app, topic: dict, arg: str) -> str:
     if error:
         await send_to_topic(app, topic, error)
         return error
-    new_topic, error = await create_topic(app, topic, name, cwd=path, session_id=uuid.uuid4())
+    new_topic, error = await create_topic(app, topic, name, cwd=path, session_id=uuid.uuid4(),
+                                          topic_settings={"title_implicit": arg not in settings.PROJECTS})
     if error:
         await send_to_topic(app, topic, error)
         return error
@@ -400,7 +413,8 @@ async def new_project(app, topic: dict, name: str) -> str:
     path = base / name
     created = not path.exists()
     path.mkdir(parents=True, exist_ok=True)
-    new_topic, error = await create_topic(app, topic, name, cwd=str(path), session_id=uuid.uuid4())
+    new_topic, error = await create_topic(app, topic, name, cwd=str(path), session_id=uuid.uuid4(),
+                                          topic_settings={"title_implicit": True})
     if error:
         await send_to_topic(app, topic, error)
         return error
@@ -509,10 +523,28 @@ async def rewind(app, topic: dict, turn_id: int, message_id: int | None) -> str:
     return texts.TOAST_REWOUND if text.startswith("⏪") else texts.TOAST_FAILED
 
 
-async def rename_topic(app, topic: dict, name: str, *, tell_claude: bool = True) -> str:
+def folder_name(cwd: str) -> str:
+    """The name a topic gets from its folder (PROJECT_SPEC 4.2): the last path component."""
+    return os.path.basename(os.path.normpath(cwd)) or cwd
+
+
+async def name_implicit_topic(app, topic: dict) -> dict:
+    """A topic the user never named (`title_implicit`) is called after its folder; on a folder change the
+    name follows. Returns the (possibly renamed) topic."""
+    if not (topic.get("settings") or {}).get("title_implicit"):
+        return topic
+    name = folder_name(topic["cwd"])
+    if topic.get("title") == name:
+        return topic
+    await rename_topic(app, topic, name, tell_claude=False, implicit=True)
+    return await app.store.topics.get_by_id(topic["id"]) or topic
+
+
+async def rename_topic(app, topic: dict, name: str, *, tell_claude: bool = True, implicit: bool = False) -> str:
+    """`implicit=False` (the user's own name) pins the title; `implicit=True` keeps it following the folder."""
     name = " ".join(name.split())[:128]
     await app.store.topics.update(topic["id"], title=name)
-    await app.store.topics.update_settings(topic["id"], title_implicit=False)
+    await app.store.topics.update_settings(topic["id"], title_implicit=implicit)
     if topic["thread_id"]:
         await app.sender.enqueue(f"{topic['chat_id']}:{topic['thread_id']}",
                                  EditForumTopic(chat_id=topic["chat_id"], message_thread_id=topic["thread_id"], name=name),

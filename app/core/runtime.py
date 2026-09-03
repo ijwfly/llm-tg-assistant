@@ -400,8 +400,6 @@ class TopicRuntime:
             await send(texts.COMPACTED.format(pre_tokens=state.compact_pre_tokens or "?"))
         elif state.texts_sent == 0 and not state.request.quiet:
             await send(texts.TURN_NO_TEXT)
-        if not r.is_error:
-            await self._rename_implicit_topic(state)
         if state.denials:
             await send(texts.DENIED.format(tools=", ".join(dict.fromkeys(state.denials))), keyboards.denied_kb(tid))
         if prefs.topic_flag(state.topic, "show_turn_stats"):
@@ -410,18 +408,6 @@ class TopicRuntime:
             path = await voice_for_turn(state.spoken, state.turn_id)
             if path:
                 await sender.send_voice(self.chat_id, self.thread_id, str(path), topic_id=tid, turn_id=state.turn_id)
-
-    async def _rename_implicit_topic(self, state: TurnState) -> None:
-        """A topic the user created without a name gets one from the first prompt (PROJECT_SPEC 4.2)."""
-        topic = await self.app.store.topics.get_by_id(self.topic_id)
-        if not topic or not (topic.get("settings") or {}).get("title_implicit") or not self.thread_id:
-            return
-        text = " ".join(b.get("text", "") for b in state.request.content if b.get("type") == "text")
-        title = " ".join(text.split())[:40].strip()
-        if not title or title.startswith("/"):
-            return
-        from app.core import actions
-        await actions.rename_topic(self.app, topic, title, tell_claude=False)
 
     async def _drop_dead_process(self) -> None:
         """After SIGINT the CLI exits on its own; make sure it is gone and forget it."""

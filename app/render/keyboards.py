@@ -93,14 +93,30 @@ def confirm_delete_kb(topic_id: int) -> InlineKeyboardMarkup:
                                                   _btn("Отмена", cb("refresh", topic_id))]])
 
 
-def sessions_kb(topic_id: int, entries: list[tuple[str, bool]]) -> InlineKeyboardMarkup:
-    """entries: (session id, same folder as the topic). Same folder → continue here; else a new topic."""
+BUTTON_LABEL_LIMIT = 48   # what fits on a phone; the callback carries the id, the label carries the name
+
+
+def _label(text: str) -> str:
+    return text if len(text) <= BUTTON_LABEL_LIMIT else text[:BUTTON_LABEL_LIMIT - 1] + "…"
+
+
+def sessions_kb(topic_id: int, entries: list[tuple[str, bool, str, str]], page: int = 0, pages: int = 1) -> InlineKeyboardMarkup:
+    """entries: (session id, same folder as the topic, folder name, when). The label is the folder name
+    only (plus «· when» if the folder repeats on the page); same folder → continue here (`rs`), else a
+    new topic (`ns`). Pages: «Назад» / «Дальше» edit the card in place (`sp:<topic>:<page>`)."""
     rows = []
-    for sid, same_folder in entries:
-        if same_folder:
-            rows.append([_btn(f"Продолжить здесь {sid[:8]}", cb("rs", topic_id, sid[:8]))])
-        else:
-            rows.append([_btn(f"Новая тема {sid[:8]}", cb("ns", topic_id, sid[:8]))])
+    folders = [e[2] for e in entries]
+    for sid, same_folder, folder, when in entries:
+        label = folder if folders.count(folder) == 1 else f"{folder} · {when}"
+        rows.append([_btn(_label(label), cb("rs" if same_folder else "ns", topic_id, sid[:8]))])
+    nav = []
+    if page > 0:
+        nav.append(_btn("Назад", cb("sp", topic_id, str(page - 1))))
+    if page + 1 < pages:
+        nav.append(_btn("Дальше", cb("sp", topic_id, str(page + 1))))
+    if nav:
+        rows.append(nav)
+    rows.append([_btn("Скрыть", cb("hide", topic_id))])
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 

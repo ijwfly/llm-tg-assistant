@@ -48,7 +48,8 @@ async def _topic(app, message: Message) -> dict:
     await _remember_user(app, message)
     topic = await app.topics.get_or_create(topic_ref(message), topic_title(message))
     if _implicit_title(message) and "title_implicit" not in (topic.get("settings") or {}):
-        topic = await app.store.topics.update_settings(topic["id"], title_implicit=True)   # False after a rename
+        topic = await app.store.topics.update_settings(topic["id"], title_implicit=True)   # False after /rename
+        topic = await actions.name_implicit_topic(app, topic)                              # named after its folder
     return topic
 
 
