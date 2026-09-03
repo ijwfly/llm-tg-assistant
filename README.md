@@ -73,10 +73,12 @@ points. Compose is the better fit on a Linux server.
   current topic (same folder), «New topic» opens a topic for another session's folder. Back to the
   terminal: `claude --resume <id>`. Two writers on one session at the same time is a bad idea: close
   the terminal before continuing in Telegram.
-- **Permissions.** The `prompt` mode (default) shows a card for every action Claude Code did not allow
-  by itself: «Allow», «Deny», «Always: <rule>» (written to the project's `.claude/settings.local.json`,
+- **Permissions.** The default mode is `auto`: Claude Code's own classifier decides, and what it
+  cannot decide comes as a card. `prompt` shows a card for every action Claude Code did not allow by
+  itself: «Allow», «Deny», «Always: <rule>» (written to the project's `.claude/settings.local.json`,
   so it applies in the terminal too), «Deny and explain». `acceptEdits` lets edits through, `plan` is
   plan-only with approval, `dontAsk`/`bypass` never ask (`bypass` needs `ALLOW_BYPASS = True`).
+  The mode is per topic («Права» on the card); `DEFAULT_PERMISSION_MODE` only seeds new topics.
 - **Questions and plans** from the model come as buttons: options, «Own answer», «Execute, edits without
   questions» / «ask about edits» / «Rework the plan».
 - **Media.** The model sees photos as images; documents and voice notes are saved to the inbox and

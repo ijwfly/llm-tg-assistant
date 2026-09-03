@@ -17,7 +17,7 @@
 # --- Claude Code ----------------------------------------------------------------
 # CLAUDE_BIN = "claude"
 # CLAUDE_CONFIG_DIR = "/home/app/.claude"
-# DEFAULT_PERMISSION_MODE = "prompt"     # prompt | acceptEdits | plan | auto | dontAsk | bypass
+# DEFAULT_PERMISSION_MODE = "auto"       # auto | prompt | acceptEdits | plan | dontAsk | bypass
 # ALLOW_BYPASS = False
 # DEFAULT_MODEL = None                   # e.g. "sonnet"
 # DEFAULT_EFFORT = None                  # low | medium | high | xhigh | max

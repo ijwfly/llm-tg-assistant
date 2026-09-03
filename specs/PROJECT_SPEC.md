@@ -509,10 +509,10 @@ Telegram не отдаёт его ботам.`, элемент пропуска�
 
 | Режим моста | Что передаётся Claude Code | Поведение |
 |---|---|---|
-| `prompt` (рекомендуется) | `default` + prompt tool | Всё, что Claude Code не решил сам по правилам, приходит кнопками |
+| `prompt` | `default` + prompt tool | Всё, что Claude Code не решил сам по правилам, приходит кнопками |
 | `acceptEdits` | `acceptEdits` + prompt tool | Правки и файловые команды проходят сами, остальное — кнопками |
 | `plan` | `plan` + prompt tool | Только чтение; план — карточкой (4.7.2) |
-| `auto` | `auto` + prompt tool | Классификатор Claude Code; спорное — кнопками (если CLI доводит до prompt tool) |
+| `auto` (**по умолчанию** с 2026-09-04) | `auto` + prompt tool | Классификатор Claude Code; спорное — кнопками (если CLI доводит до prompt tool) |
 | `dontAsk` | `dontAsk` | Всё, что потребовало бы вопроса, отклоняется; список в конце хода |
 | `bypass` | `bypassPermissions` | Проверок нет. Полный shell с телефона. Требует `ALLOW_BYPASS = True` в конфиге |
 
@@ -850,7 +850,7 @@ claude -p --verbose
 | `WORK_ROOT` | — обязателен | корень проектов (хостовый путь, в контейнере тот же); `/cd` не выходит за него |
 | `DEFAULT_CWD` | `WORK_ROOT` | директория новых тем |
 | `PROJECTS` | `{}` | алиас → путь |
-| `DEFAULT_PERMISSION_MODE` | — обязателен | `prompt` рекомендуется |
+| `DEFAULT_PERMISSION_MODE` | `auto` | режим новых тем; у существующих тем режим в строке БД |
 | `ALLOW_BYPASS` | `False` | разрешить `/perm bypass` |
 | `DEFAULT_MODEL`, `DEFAULT_EFFORT`, `FALLBACK_MODEL` | `None` | |
 | `MAX_BUDGET_USD_PER_TURN`, `MAX_TURNS` | `None` | лимиты хода |
