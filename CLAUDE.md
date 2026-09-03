@@ -86,7 +86,7 @@ Every task goes through the same loop:
 
 ### Running
 
-- The single entry point is `bash scripts/test.sh`. It starts the test database container if it is not already running, waits for it to become healthy, runs the whole suite, and tears the container down on exit (via a shell `trap`, so teardown also happens on failure). Extra arguments are forwarded to the test runner, so `bash scripts/test.sh -k reply -v` works.
+- The single entry point is `bash scripts/test.sh`. The test stack runs under its own compose project name (`llm-tg-assistant-test`), so its teardown never touches a production `docker compose up` from the same checkout. It starts the test database container if it is not already running, waits for it to become healthy, runs the whole suite, and tears the container down on exit (via a shell `trap`, so teardown also happens on failure). Extra arguments are forwarded to the test runner, so `bash scripts/test.sh -k reply -v` works.
 - A fully containerized variant (`scripts/test_docker.sh`) builds the app image and runs the same suite inside compose; use it for CI or when the host environment is suspect.
 - **All tests must pass before work is considered done.** Never commit on red. Never skip, weaken or delete a test to make it pass. A test that fails after your change is your bug until proven otherwise.
 

@@ -4,7 +4,7 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-COMPOSE="docker compose -f docker-compose.test.yml"
+COMPOSE="docker compose -p llm-tg-assistant-test -f docker-compose.test.yml"   # own project name: never touches the production stack
 PY="${PYTHON:-.venv/bin/python}"
 PORT="${TEST_DB_PORT:-55432}"
 export TEST_DATABASE_URL="${TEST_DATABASE_URL:-postgresql://app:app@localhost:${PORT}/app_test}"
