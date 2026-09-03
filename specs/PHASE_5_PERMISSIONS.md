@@ -27,7 +27,7 @@ Status: all phases done — разрешения, вопросы и планы �
 - aiogram 3.31: `EditMessageText.rich_message` есть — карточку с fences можно править на месте.
 - Unix-сокет: длина пути ≤ 104 байта на macOS — тестовый путь берётся из `tempfile`, не из
   `tmp_path`.
-- **Assumed** (закрывается smoke): в `auto` режиме спорные вызовы доходят до prompt tool.
+- **Assumed** (smoke не наблюдал): в `auto` режиме спорные вызовы доходят до prompt tool; в проверке `auto` разрешил Write/rm сам.
 
 ## Decisions
 
@@ -94,6 +94,11 @@ Status: all phases done — разрешения, вопросы и планы �
   кладётся в `answers[<вопрос>]` строкой, отдельного поля `response` нет (spike показал, что
   модель читает `answers`).
 - **Фаза 4**: документация; `docker-compose.yml` задаёт `BRIDGE_SOCKET=/data/bridge.sock`.
+- **Живая проверка** (2026-09-03, @AtlasHarbot): карточка Write → `✅` → файл создан; вопрос
+  `AskUserQuestion` кнопками → ответ учтён; в логе ни одной ошибки. В режиме `auto` Write и
+  `rm` только что созданных файлов прошли без карточки — классификатор CLI разрешил сам, до
+  prompt tool не дошло. Факт «auto доводит спорное до prompt tool» остаётся не наблюдённым
+  (не опровергнут); при необходимости кнопок — `prompt`.
 
 ## Manual smoke checklist
 
