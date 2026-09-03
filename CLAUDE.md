@@ -63,7 +63,8 @@ calls outside the live view are `createForumTopic` / `deleteForumTopic` in `acti
 with stream-json; assistant events arrive one content block at a time; SIGINT ends the turn and
 the process; the permission prompt tool receives `{tool_name, input, tool_use_id}` and answers
 with `{"behavior": ...}` JSON; `updatedPermissions` with `localSettings` writes
-`.claude/settings.local.json`.
+`.claude/settings.local.json`; `--rewind-files <uuid>` is a standalone operation (no prompt, one stdout line, needs a
+user-message uuid of the session); two stdin messages sent at once are merged into one turn.
 
 ## 1. Development cycle
 

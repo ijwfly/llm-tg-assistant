@@ -24,6 +24,10 @@
 # MODEL_CHOICES = ["sonnet", "opus", "haiku"]   # the «Модель» button on the topic card cycles through these
 # SOUL_PATH = "/home/app/.config/llm-tg-assistant/SOUL.md"   # persona appended to the system prompt; /soul overrides per topic
 # BRIDGE_PREAMBLE_PATH = None            # None -> bridge_preamble.md from the repository
+# BRIDGE_SEND_FILE_TOOL = True           # the model can send files to the topic
+# VERBOSE_TOOL_OUTPUT = False            # default for «Вывод инструментов» on the card
+# FORWARD_SUBAGENT_TEXT = False          # subagent text in <details>
+# FILE_CHECKPOINTING = False             # «Откатить файлы» on the card (Claude Code file checkpoints)
 
 # --- Voice ------------------------------------------------------------------------
 # TRANSCRIBE_CMD = "opusdec --quiet --rate 16000 --force-wav {file} {wav} && whisper-cli -m model.bin -f {wav} -nt"
