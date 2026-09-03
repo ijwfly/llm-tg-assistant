@@ -15,6 +15,7 @@ from app.bridge.cli import build_argv, child_env
 from app.bridge.process import ClaudeProcess
 from app.core import prefs
 from app.core.liveview import LiveView
+from app.core.voice import voice_for_turn
 from app.render import keyboards
 from app.render.markdown import RICH_LIMIT
 from app.render.progress import ProgressState, draft_markdown, progress_text
@@ -380,6 +381,10 @@ class TopicRuntime:
             await send(texts.DENIED.format(tools=", ".join(dict.fromkeys(state.denials))), keyboards.denied_kb(tid))
         if prefs.topic_flag(state.topic, "show_turn_stats"):
             await send(texts.turn_stats(r.duration_ms, r.total_cost_usd, r.num_turns))
+        if prefs.topic_flag(state.topic, "voice") and state.spoken and settings.TTS_CMD:
+            path = await voice_for_turn(state.spoken, state.turn_id)
+            if path:
+                await sender.send_voice(self.chat_id, self.thread_id, str(path), topic_id=tid, turn_id=state.turn_id)
 
     async def _rename_implicit_topic(self, state: TurnState) -> None:
         """A topic the user created without a name gets one from the first prompt (PROJECT_SPEC 4.2)."""

@@ -138,6 +138,19 @@ class TurnsRepo:
     async def get(self, turn_id: int) -> dict | None:
         return _row(await self.db.fetchrow("SELECT * FROM turns WHERE id = $1", turn_id))
 
+    async def month_usage(self) -> list[dict]:
+        """Finished turns of the current calendar month: per topic and model, with tokens and cost."""
+        return [dict(r) for r in await self.db.fetch(
+            """SELECT t.topic_id, COALESCE(tp.title, tp.chat_id::text || ':' || COALESCE(tp.thread_id, 0)::text) AS topic,
+                      COALESCE(t.model, '?') AS model, count(*) AS turns,
+                      COALESCE(sum(t.cost_usd), 0) AS cost,
+                      COALESCE(sum((t.usage->>'input_tokens')::bigint), 0) AS input_tokens,
+                      COALESCE(sum((t.usage->>'output_tokens')::bigint), 0) AS output_tokens
+               FROM turns t LEFT JOIN topics tp ON tp.id = t.topic_id
+               WHERE t.finished_at >= date_trunc('month', now()) AND t.status IN ('done', 'error')
+               GROUP BY t.topic_id, topic, COALESCE(t.model, '?')
+               ORDER BY cost DESC, turns DESC""")]
+
     async def last_for_topic(self, topic_id: int) -> dict | None:
         return _row(await self.db.fetchrow(
             "SELECT * FROM turns WHERE topic_id = $1 ORDER BY id DESC LIMIT 1", topic_id))

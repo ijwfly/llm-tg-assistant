@@ -440,6 +440,15 @@ async def delete_topic(app, topic: dict) -> str:
     return texts.TOAST_DELETED
 
 
+async def usage_card(app, topic: dict) -> str:
+    from datetime import date
+    from app.render.keyboards import hide_kb
+    rows = await app.store.turns.month_usage()
+    text = texts.usage_card(rows, date.today().strftime("%Y-%m"))
+    await send_to_topic(app, topic, text, reply_markup=hide_kb(topic["id"]), role="card")
+    return text
+
+
 async def rename_topic(app, topic: dict, name: str, *, tell_claude: bool = True) -> str:
     name = " ".join(name.split())[:128]
     await app.store.topics.update(topic["id"], title=name)

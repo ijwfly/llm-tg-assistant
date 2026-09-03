@@ -82,6 +82,14 @@ class TelegramSender:
         return await self.enqueue_raw(self._key(chat_id, thread_id), "SendDocument", payload,
                                       topic_id=topic_id, turn_id=turn_id, role=role)
 
+    async def send_voice(self, chat_id: int, thread_id: int | None, path: str, *, topic_id: int | None = None,
+                         turn_id: int | None = None, role: str | None = "voice") -> int:
+        payload = {"chat_id": chat_id, "voice": FILE_PREFIX + path}
+        if thread_id:
+            payload["message_thread_id"] = thread_id
+        return await self.enqueue_raw(self._key(chat_id, thread_id), "SendVoice", payload,
+                                      topic_id=topic_id, turn_id=turn_id, role=role)
+
     async def edit_text(self, chat_id: int, thread_id: int | None, message_id: int, text: str, *,
                         reply_markup=None, topic_id: int | None = None) -> int:
         method = EditMessageText(chat_id=chat_id, message_id=message_id, text=text, reply_markup=reply_markup)

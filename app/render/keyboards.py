@@ -66,6 +66,10 @@ def topic_card_kb(topic_id: int, *, running: bool, perm: str, model: str, effort
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
+def hide_kb(topic_id: int) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(inline_keyboard=[[_btn("Скрыть", cb("hide", topic_id))]])
+
+
 def confirm_delete_kb(topic_id: int) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=[[_btn("Да, удалить тему", cb("delc", topic_id)),
                                                   _btn("Отмена", cb("refresh", topic_id))]])

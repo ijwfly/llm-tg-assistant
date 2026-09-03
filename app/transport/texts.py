@@ -200,6 +200,33 @@ def files_list(rows: list[dict]) -> str:
     return "Последние файлы темы:\n" + "\n".join(f"{r['kind']}: {r['path']}" for r in rows)
 
 
+def _tokens(n: int) -> str:
+    return f"{n / 1000:.1f}k" if n >= 1000 else str(n)
+
+
+def usage_card(rows: list[dict], month: str) -> str:
+    if not rows:
+        return f"За {month} ходов ещё не было."
+    by_topic: dict[str, dict] = {}
+    by_model: dict[str, dict] = {}
+    total = {"turns": 0, "cost": 0.0, "inp": 0, "out": 0}
+    for r in rows:
+        for bucket, key in ((by_topic, r["topic"]), (by_model, r["model"])):
+            acc = bucket.setdefault(key, {"turns": 0, "cost": 0.0, "inp": 0, "out": 0})
+            acc["turns"] += r["turns"]; acc["cost"] += float(r["cost"]); acc["inp"] += r["input_tokens"]; acc["out"] += r["output_tokens"]
+        total["turns"] += r["turns"]; total["cost"] += float(r["cost"]); total["inp"] += r["input_tokens"]; total["out"] += r["output_tokens"]
+
+    def line(name, a):
+        return f"{name}: {a['turns']} ходов · ${a['cost']:.2f} · {_tokens(a['inp'])} in / {_tokens(a['out'])} out"
+
+    lines = [f"Расход за {month}", "", "По темам:"]
+    lines += [line(k, v) for k, v in sorted(by_topic.items(), key=lambda kv: -kv[1]["cost"])]
+    lines += ["", "По моделям:"]
+    lines += [line(k, v) for k, v in sorted(by_model.items(), key=lambda kv: -kv[1]["cost"])]
+    lines += ["", line("Итого", total)]
+    return "\n".join(lines)
+
+
 def limits_line(info: dict | None) -> str | None:
     windows = (info or {}).get("unifiedWindows") or {}
     names = {"five_hour": "5 ч", "seven_day": "7 дн"}

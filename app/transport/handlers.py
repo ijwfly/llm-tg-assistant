@@ -98,6 +98,10 @@ async def cmd_soul(message: Message, command: CommandObject, app) -> None:
     await actions.set_soul(app, await _topic(app, message), command.args or "")
 
 
+async def cmd_usage(message: Message, app) -> None:
+    await actions.usage_card(app, await _topic(app, message))
+
+
 async def cmd_voice(message: Message, command: CommandObject, app) -> None:
     await actions.set_voice(app, await _topic(app, message), command.args or "")
 
@@ -269,6 +273,7 @@ def build_router() -> Router:
     router.message.register(cmd_effort, Command("effort"))
     router.message.register(cmd_soul, Command("soul"))
     router.message.register(cmd_voice, Command("voice"))
+    router.message.register(cmd_usage, Command("usage"))
     router.message.register(any_message, CONTENT_FILTER)
     router.edited_message.register(edited_message, CONTENT_FILTER)
     router.stopped_message_generation.register(on_generation_stopped)
