@@ -30,12 +30,14 @@ services:
         required: false
     environment:
       DATABASE_URL: postgresql://${POSTGRES_USER:-app}:${POSTGRES_PASSWORD:-app}@db:5432/${POSTGRES_DB:-app}
-      WORK_ROOT: /work
-      CLAUDE_CONFIG_DIR: /home/app/.claude
+      # WORK_ROOT and CLAUDE_HOME are mounted at their host paths, so the cwd of every
+      # `claude` process (and therefore the transcript folder) is the same as in a terminal.
+      WORK_ROOT: ${WORK_ROOT:?set WORK_ROOT in .env}
+      CLAUDE_CONFIG_DIR: ${CLAUDE_HOME:?set CLAUDE_HOME in .env}
       BRIDGE_SOCKET: /data/bridge.sock
     volumes:
-      - ${WORK_ROOT:-./work}:/work
-      - ${CLAUDE_HOME:-~/.claude}:/home/app/.claude
+      - ${WORK_ROOT:?set WORK_ROOT in .env}:${WORK_ROOT}
+      - ${CLAUDE_HOME:?set CLAUDE_HOME in .env}:${CLAUDE_HOME}
       - ${GITCONFIG:-~/.gitconfig}:/home/app/.gitconfig:ro
       - ./settings_local.py:/app/settings_local.py:ro
       - inbox:/data/inbox

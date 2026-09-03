@@ -5,6 +5,14 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Changed
+
+- **Compose mirrors host paths.** `WORK_ROOT` and `CLAUDE_HOME` are mounted into the `bot` container at
+  the same absolute paths as on the host (instead of `/work` and `/home/app/.claude`), so `claude`
+  runs with the terminal's cwd, transcripts of terminal and bot sessions share one folder per project,
+  «Sessions» shows both, and `settings_local.py` paths work unchanged in both modes. Both variables are
+  now required in `.env`. See `specs/PROJECT_SPEC.md` §7.2.
+
 ### Fixed
 
 - **Outbox stall on permanent Telegram errors** — an in-place card edit with identical content

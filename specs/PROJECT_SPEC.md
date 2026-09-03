@@ -129,9 +129,9 @@ tool, `updatedPermissions` session/localSettings, deny с сообщением),
 
 Остаются на следующие фазы:
 
-- **Фаза 1**: `--resume` внутри контейнера для сессии, начатой на хосте — пути `/work/...`
-  в контейнере и хостовые пути дают разные `projects/<encoded-cwd>` директории; поиск по id
-  идёт по всем проектам, но `cwd` в транскрипте будет хостовым. Проверить с реальным compose.
+- ~~**Фаза 1**: `--resume` внутри контейнера для сессии, начатой на хосте~~ — снято: compose
+  монтирует `WORK_ROOT` и `CLAUDE_HOME` по тем же абсолютным путям, что на хосте, поэтому cwd
+  и `projects/<encoded-cwd>` совпадают с терминальными (проверено живым `/sessions` из контейнера).
 - **Фаза 3 smoke**: рендер `sendRichMessageDraft` с `<tg-thinking>` и код-блоками в
   Telegram Desktop/iOS/Android.
 - **Фаза 5**: поведение `auto`-режима под `-p` с prompt tool (доходят ли спорные вызовы).
@@ -841,7 +841,7 @@ claude -p --verbose
 | `ALLOWED_CHATS` | `[]` | где бот говорит |
 | `NOTIFY_CHAT` | `None` | `chat_id[:thread_id]` |
 | `DATABASE_URL` | `postgresql://…@db/app` | |
-| `WORK_ROOT` | `/work` | корень проектов; `/cd` не выходит за него |
+| `WORK_ROOT` | — обязателен | корень проектов (хостовый путь, в контейнере тот же); `/cd` не выходит за него |
 | `DEFAULT_CWD` | `WORK_ROOT` | директория новых тем |
 | `PROJECTS` | `{}` | алиас → путь |
 | `DEFAULT_PERMISSION_MODE` | — обязателен | `prompt` рекомендуется |
@@ -870,9 +870,11 @@ Database / Features.
 
 - `bot`: образ `python:3.12-slim` + Node 22 + `npm i -g @anthropic-ai/claude-code` (версия
   пинится) + `ffmpeg`/`opus-tools` (для голоса, опционально); пользователь `app` с
-  `UID/GID` из `.env` (совпадают с хостовыми, чтобы правки файлов в `/work` были от
-  владельца); volumes: `${WORK_ROOT}:/work`, `${CLAUDE_HOME}:/home/app/.claude`
-  (`CLAUDE_CONFIG_DIR`; даёт транскрипты, OAuth-креды подписки, `settings.json`, skills),
+  `UID/GID` из `.env` (совпадают с хостовыми, чтобы правки файлов в `WORK_ROOT` были от
+  владельца); volumes зеркальные: `${WORK_ROOT}:${WORK_ROOT}`, `${CLAUDE_HOME}:${CLAUDE_HOME}`
+  (`CLAUDE_CONFIG_DIR`; даёт транскрипты, OAuth-креды подписки, `settings.json`, skills) — те же
+  абсолютные пути, что на хосте, чтобы cwd процессов `claude` и папки транскриптов совпадали с
+  терминальными и терминал с ботом делили одни сессии,
   `${GITCONFIG}:/home/app/.gitconfig:ro`, named volume `inbox:/data/inbox`, unix-сокет во
   внутреннем tmpfs. `env_file: .env` (`ANTHROPIC_API_KEY` если нет подписки, `TELEGRAM_BOT_TOKEN`).
 - `db`: `postgres:16`, healthcheck, `./app/store/migrations:/docker-entrypoint-initdb.d:ro`,
