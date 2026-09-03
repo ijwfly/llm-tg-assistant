@@ -1,6 +1,6 @@
 # PHASE_6_SESSIONS — сессии и темы
 
-Status: phase 1 of 3 — индекс сессий, `/sessions`, `/resume`
+Status: all phases done — сессии и темы из чата; tests green (164 passed); smoke — у пользователя
 
 ## Why
 
@@ -55,9 +55,9 @@ Status: phase 1 of 3 — индекс сессий, `/sessions`, `/resume`
 
 | # | Phase | Status |
 |---|---|---|
-| 1 | Индекс сессий, `/sessions` с кнопками, `/resume` | ⏳ |
-| 2 | Создание тем: `/project`, `/branch` (+ `🌿` из карточки), fork при спавне | ⏳ |
-| 3 | `/rename`, implicit-темы, заголовок в `/status`, документация | ⏳ |
+| 1 | Индекс сессий, `/sessions` с кнопками, `/resume` | ✅ |
+| 2 | Создание тем: `/project`, `/branch` (+ `🌿` из карточки), fork при спавне | ✅ |
+| 3 | `/rename`, implicit-темы, заголовок в `/status`, документация | ✅ |
 
 ## Tests
 
@@ -70,7 +70,10 @@ Status: phase 1 of 3 — индекс сессий, `/sessions`, `/resume`
 
 ## Phase results
 
-_(заполняется по ходу)_
+- Фазы 1–3 легли одним коммитом (общие файлы `actions/handlers/texts`), 164 теста. Индекс ловит
+  `"isMeta": true` и с пробелом (тестовые транскрипты пишутся `json.dumps` с пробелами, CLI — без).
+  `get_or_create` с `ON CONFLICT` сжигает id последовательности — id тем не подряд, это нормально.
+  Отклонение: имя ветки без аргумента — `<имя темы | id8> · ветка`.
 
 ## Manual smoke checklist
 

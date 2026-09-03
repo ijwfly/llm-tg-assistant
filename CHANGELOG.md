@@ -53,6 +53,13 @@ All notable changes to this project are documented here. The format follows
   «спрашивать про правки» / «Доработать»; the live view shows `🔐 жду разрешения`. Settings:
   `BRIDGE_SOCKET`, `PERMISSION_TIMEOUT_SECS`, `QUESTION_TIMEOUT_SECS`, `PERMISSION_DIFF_LINES`.
   See `specs/PHASE_5_PERMISSIONS.md`.
+- **Sessions and topics (phase 6)** — `/sessions` lists Claude Code sessions of the topic's
+  directory (terminal ones included) with `🔗` resume and `🌿` branch buttons; `/resume <id|prefix|name>`
+  attaches any session and moves the topic into its directory; `/branch [имя]` forks the session
+  into a new forum topic (`--fork-session --name`); `/project <алиас|путь>` opens a topic per project
+  (works in private chats with topics); `/rename` renames topic and session; topics created without
+  a name are named after the first prompt; `/status` shows the session title; card buttons
+  `📜 Сессии` / `🌿 Ветка`. See `specs/PHASE_6_SESSIONS.md`.
 - **Test infrastructure** — `scripts/test.sh` with a disposable Postgres, recording Telegram
   session with failure injection, spy, update builders, fake `claude` for the coming phases.
   See `specs/E2E_TESTS.md`.

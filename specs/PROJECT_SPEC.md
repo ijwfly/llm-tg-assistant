@@ -1,6 +1,6 @@
 # PROJECT_SPEC — нативное управление сессиями Claude Code через Telegram
 
-Status: фаза 5 из 9 done — разрешения, вопросы и планы кнопками, tests green; фаза 6 (сессии и темы) не начата
+Status: фаза 6 из 9 done — сессии и темы (/sessions, /resume, /branch, /project, /rename), tests green; фаза 7 (настройки, персона, голос) не начата
 
 Документ объединяет идеи двух референсов — `reference_spec_claude_code.md` (мост claude-tg:
 тема форума = сессия Claude Code) и `reference_spec_tg_ux.md` (нативный чат-UX для LLM в
@@ -914,7 +914,7 @@ Database / Features.
 | 3 | Стриминг, рендер, кнопки | draft в личке (`<tg-thinking>`, can_stop, keepalive), прогресс в группах с `🛑`, шлюзы, fence-aware сплиттер, файл при длинном ответе, склейка сегментов, thinking-превью; слой callback, кнопки на вердиктах, карточка темы с базовыми действиями (новый контекст, стоп, прервать, обновить, скрыть), меню «/» из 4 команд | границы контента, stop через draft и кнопку, 429 на правке, карточка и устаревшие кнопки | ✅ |
 | 4 | Входной конвейер | батчер, prompt/staging, форварды, медиа (фото → image block + inbox, документы, голос/STT), reply-цитаты, правки, реакции, `/files`, чистка inbox | альбом = один ход, staging уходит со следующим ходом, форвард без ответа, файл > 20 МБ | ✅ |
 | 5 | Разрешения, вопросы, планы | MCP-сервер, сокет, `pending_prompts`, карточки (diff-рендер), «Всегда» (suggestions/localSettings и правила моста), `/perm`, таймауты, AskUserQuestion, ExitPlanMode, `AWAITING_INPUT` | allow/deny/always/timeout/устаревшая кнопка, вопрос с multiSelect и свободным ответом, план → acceptEdits | ✅ |
-| 6 | Сессии и темы | `/sessions` (индекс), `/resume`, `/branch`, `/project` (форум и личка), `/rename`, переименование implicit-тем | resume терминальной сессии, branch в новую тему, project в личке | ⏳ |
+| 6 | Сессии и темы | `/sessions` (индекс), `/resume`, `/branch`, `/project` (форум и личка), `/rename`, переименование implicit-тем | resume терминальной сессии, branch в новую тему, project в личке | ✅ |
 | 7 | Настройки, персона, голос | переключатели прав/модели/усилия и страница `⚙️ Ещё` на карточке темы, `/model`, `/effort`, `/soul`, `/voice`, TTS, `/usage`, `NOTIFY_CHAT` | карточка перерисовывается на месте, TTS не шлётся для сплошного кода | ⏳ |
 | 8 | Дополнения | `send_file`, `verbose_tools`, `FORWARD_SUBAGENT_TEXT`, `/rewind`, задачи из `TaskCreated` hooks, **дополнения пользователя из раздела 12** | по фиче | ⏳ |
 | 9 | Документация и деплой | `CLAUDE.md` (карта проекта), `README.md`, `CHANGELOG.md`, архитектурные спеки, smoke-прогон на реальном боте | — | ⏳ |
@@ -940,6 +940,10 @@ Database / Features.
   stdlib MCP-сервер → unix-сокет → карточки с кнопками; «Всегда» через `updatedPermissions localSettings`
   и `/perm forget`; вопросы и планы карточками; ожидание текста без `AWAITING_INPUT` в БД (в памяти
   `PromptService`). Одобрение плана меняет и режим темы в БД, чтобы respawn не вернул `plan`.
+- **Фаза 6** (2026-09-03): `specs/PHASE_6_SESSIONS.md`, 164 теста. Индекс сессий — свой stdlib-модуль по
+  правилам SDK (без зависимости `claude-agent-sdk`); `/branch` и `/project` создают темы прямым
+  `createForumTopic`; fork хранится в `topics.settings` до первого `init`; implicit-темы называются по
+  первому промпту (не по `aiTitle`, он появляется позже). Предупреждение про открытый терминал не сделано.
 
 ---
 
