@@ -21,7 +21,7 @@ async def test_plan_card_accept_switches_to_accept_edits(app, spy, fake_claude):
     md = card["rich_message"]["markdown"]
     assert "# Рефакторинг" in md and "```python\ndef parse(): ...\n```" in md
     assert buttons(card) == ["pl:1:1:accept", "pl:1:1:ask", "pl:1:1:rework"]
-    assert button_texts(card)[0] == "✅ Выполнять (правки без вопросов)"
+    assert button_texts(card)[0] == "Выполнять, правки без вопросов"
     argv = fake_claude.argv_calls()[-1]
     assert argv[argv.index("--permission-mode") + 1] == "plan" and "--permission-prompt-tool" in argv
     mid = await card_message_id(app)

@@ -89,6 +89,8 @@ async def on_callback(cq: CallbackQuery, app) -> None:
             toast = await actions.branch(app, topic)
         elif action == "rs":
             toast = await actions.resume_session(app, topic, arg or "")
+        elif action == "ns":
+            toast = await actions.topic_from_session(app, topic, arg or "")
         elif action == "br":
             toast = await actions.branch(app, topic, from_session=(await _full_session_id(topic, arg or "")))
         elif action in PROMPT_ACTIONS:

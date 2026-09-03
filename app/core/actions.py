@@ -113,19 +113,60 @@ async def topic_card(app, topic: dict) -> tuple[str, object]:
 async def _where(app, topic: dict, session_id: str) -> str:
     if str(topic["session_id"]) == session_id:
         return "эта тема"
+    if session_id in (topic.get("settings") or {}).get("past_sessions", []):
+        return "эта тема, раньше"
     other = await app.store.topics.find_by_session(uuid.UUID(session_id))
     if other:
         return f"тема «{other.get('title') or other['id']}»"
-    return "терминал"
+    return ""
+
+
+def _folder_label(cwd: str | None, root: str) -> str:
+    if not cwd:
+        return "?"
+    try:
+        rel = os.path.relpath(Path(cwd).resolve(), Path(root).resolve())
+    except ValueError:
+        return cwd
+    return "." if rel == "." else rel
 
 
 async def sessions_card(app, topic: dict) -> str:
-    found = sessions.list_sessions(topic["cwd"])
-    rows = [(s.short, sessions.ago(s.mtime), s.title, await _where(app, topic, s.session_id)) for s in found]
-    text = texts.sessions_card(topic["cwd"], rows)
-    kb = sessions_kb(topic["id"], [s.session_id for s in found]) if found else None
+    """Every session of the machine inside WORK_ROOT (PROJECT_SPEC 4.3.1): the topic's own folder first."""
+    root = settings.WORK_ROOT
+    found, outside = sessions.machine_sessions(root, first_cwd=topic["cwd"])
+    rows, entries = [], []
+    topic_dir = Path(topic["cwd"]).resolve()
+    for s in found:
+        same = Path(s.cwd or "").resolve() == topic_dir
+        rows.append((_folder_label(s.cwd, root), s.short, sessions.ago(s.mtime), s.title, await _where(app, topic, s.session_id)))
+        entries.append((s.session_id, same))
+    text = texts.sessions_card(root, rows, outside)
+    kb = sessions_kb(topic["id"], entries) if entries else None
     await send_to_topic(app, topic, text, reply_markup=kb, role="card")
     return text
+
+
+async def topic_from_session(app, topic: dict, query: str) -> str:
+    """`Новая тема <id>` on the sessions card: a topic bound to the session's folder, continuing it."""
+    session, error = _lookup(topic, query)
+    if error:
+        await send_to_topic(app, topic, error)
+        return error
+    cwd = _usable_cwd(session.cwd)
+    if cwd is None:
+        text = texts.RESUMED_CWD_KEPT.format(cwd=session.cwd, kept=topic["cwd"])
+        await send_to_topic(app, topic, text)
+        return text
+    name = f"{os.path.basename(cwd)}: {session.title}"[:60]
+    new_topic, error = await create_topic(app, topic, name, cwd=cwd, session_id=uuid.UUID(session.session_id),
+                                          session_resumable=True)
+    if error:
+        await send_to_topic(app, topic, error)
+        return error
+    await send_to_topic(app, topic, texts.PROJECT_OPENED.format(name=name))
+    await send_to_topic(app, new_topic, texts.SESSION_TOPIC_HELLO.format(short=session.short, title=session.title[:80], cwd=cwd))
+    return texts.PROJECT_OPENED.format(name=name)
 
 
 def _lookup(topic: dict, query: str) -> tuple[sessions.SessionInfo | None, str | None]:
@@ -159,6 +200,8 @@ async def resume_session(app, topic: dict, query: str) -> str:
         await send_to_topic(app, topic, error)
         return error
     await app.runtimes.get(topic).stop_process()
+    if str(topic["session_id"]) != session.session_id:
+        await app.store.topics.remember_past_session(topic["id"])
     fields = {"session_id": uuid.UUID(session.session_id), "session_resumable": True}
     cwd = _usable_cwd(session.cwd)
     if cwd:
@@ -222,6 +265,8 @@ async def project_topic(app, topic: dict, arg: str) -> str:
         text = texts.PROJECT_USAGE + ("\n" + texts.go_list(settings.PROJECTS) if settings.PROJECTS else "")
         await send_to_topic(app, topic, text)
         return text
+    if arg == "new" or arg.startswith("new "):
+        return await new_project(app, topic, arg[3:].strip())
     raw = settings.PROJECTS.get(arg, arg)
     name = arg if arg in settings.PROJECTS else os.path.basename(os.path.normpath(os.path.expanduser(raw))) or raw
     path, error = resolve_cwd(raw)
@@ -232,6 +277,30 @@ async def project_topic(app, topic: dict, arg: str) -> str:
     if error:
         await send_to_topic(app, topic, error)
         return error
+    await send_to_topic(app, topic, texts.PROJECT_OPENED.format(name=name))
+    await send_to_topic(app, new_topic, texts.PROJECT_HELLO.format(path=path))
+    return texts.PROJECT_OPENED.format(name=name)
+
+
+async def new_project(app, topic: dict, name: str) -> str:
+    """`/project new <имя>`: folder under NEW_PROJECTS_DIR (or WORK_ROOT) + fresh session + topic."""
+    base = Path(settings.NEW_PROJECTS_DIR or settings.WORK_ROOT).resolve()
+    if not name:
+        text = texts.PROJECT_NEW_USAGE.format(dir=base)
+        await send_to_topic(app, topic, text)
+        return text
+    if "/" in name or name in (".", "..") or name.startswith(".") or len(name) > 80:
+        await send_to_topic(app, topic, texts.PROJECT_NEW_BAD_NAME)
+        return texts.PROJECT_NEW_BAD_NAME
+    path = base / name
+    created = not path.exists()
+    path.mkdir(parents=True, exist_ok=True)
+    new_topic, error = await create_topic(app, topic, name, cwd=str(path), session_id=uuid.uuid4())
+    if error:
+        await send_to_topic(app, topic, error)
+        return error
+    if created:
+        await send_to_topic(app, topic, texts.PROJECT_NEW_CREATED.format(path=path))
     await send_to_topic(app, topic, texts.PROJECT_OPENED.format(name=name))
     await send_to_topic(app, new_topic, texts.PROJECT_HELLO.format(path=path))
     return texts.PROJECT_OPENED.format(name=name)

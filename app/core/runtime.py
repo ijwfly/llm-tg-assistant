@@ -103,6 +103,7 @@ class TopicRuntime:
         """New session id (and optionally a new directory). The old transcript stays on disk."""
         async with self._lock:
             await self._stop_process_locked()
+            await self.app.store.topics.remember_past_session(self.topic_id)
             fields = {"session_id": uuid.uuid4(), "session_resumable": False}
             if cwd:
                 fields["cwd"] = cwd

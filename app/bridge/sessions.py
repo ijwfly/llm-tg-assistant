@@ -177,6 +177,29 @@ def all_sessions() -> list[SessionInfo]:
     return out
 
 
+def inside(path: str | None, root: str) -> bool:
+    if not path:
+        return False
+    try:
+        resolved = Path(path).resolve()
+        root_path = Path(root).resolve()
+    except OSError:
+        return False
+    return resolved == root_path or root_path in resolved.parents
+
+
+def machine_sessions(root: str, limit: int = 12, first_cwd: str | None = None) -> tuple[list[SessionInfo], int]:
+    """Every session on the machine whose folder lies inside `root`, newest first (the sessions of
+    `first_cwd` come first). Returns (sessions, count of sessions outside the root)."""
+    everything = all_sessions()
+    within = [s for s in everything if inside(s.cwd, root)]
+    outside = len(everything) - len(within)
+    if first_cwd:
+        first = Path(first_cwd).resolve()
+        within.sort(key=lambda s: 0 if Path(s.cwd or "").resolve() == first else 1)
+    return within[:limit], outside
+
+
 def find_sessions(query: str, cwd: str | None = None) -> list[SessionInfo]:
     """Match by full id, id prefix (>= 4 chars) or custom title (case-insensitive). The topic's own
     directory is searched first, then every project. Returns all matches (ambiguity is the caller's)."""

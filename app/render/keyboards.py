@@ -21,38 +21,43 @@ def _btn(text: str, data: str) -> InlineKeyboardButton:
     return InlineKeyboardButton(text=text, callback_data=data)
 
 
-def cancel_kb(topic_id: int, label: str = "🛑 Прервать") -> InlineKeyboardMarkup:
+def cancel_kb(topic_id: int, label: str = "Прервать") -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=[[_btn(label, cb("cancel", topic_id))]])
 
 
 def retry_kb(topic_id: int) -> InlineKeyboardMarkup:
-    return InlineKeyboardMarkup(inline_keyboard=[[_btn("🔁 Повторить", cb("retry", topic_id))]])
+    return InlineKeyboardMarkup(inline_keyboard=[[_btn("Повторить", cb("retry", topic_id))]])
 
 
 def denied_kb(topic_id: int) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=[[
-        _btn("🔓 Разрешать правки", cb("perm", topic_id, "acceptEdits")),
-        _btn("🔁 Повторить", cb("retry", topic_id)),
+        _btn("Разрешать правки", cb("perm", topic_id, "acceptEdits")),
+        _btn("Повторить", cb("retry", topic_id)),
     ]])
 
 
 def continue_kb(topic_id: int) -> InlineKeyboardMarkup:
-    return InlineKeyboardMarkup(inline_keyboard=[[_btn("▶️ Продолжить", cb("continue", topic_id))]])
+    return InlineKeyboardMarkup(inline_keyboard=[[_btn("Продолжить", cb("continue", topic_id))]])
 
 
 def topic_card_kb(topic_id: int, *, running: bool) -> InlineKeyboardMarkup:
     rows = []
     if running:
-        rows.append([_btn("🛑 Прервать", cb("cancel", topic_id))])
-    rows.append([_btn("🆕 Новый контекст", cb("new", topic_id)), _btn("⏸ Стоп процесса", cb("stop", topic_id))])
-    rows.append([_btn("📜 Сессии", cb("sessions", topic_id)), _btn("🌿 Ветка", cb("branch", topic_id))])
-    rows.append([_btn("🔄 Обновить", cb("refresh", topic_id)), _btn("✖ Скрыть", cb("hide", topic_id))])
+        rows.append([_btn("Прервать", cb("cancel", topic_id))])
+    rows.append([_btn("Новый контекст", cb("new", topic_id)), _btn("Стоп процесса", cb("stop", topic_id))])
+    rows.append([_btn("Сессии", cb("sessions", topic_id)), _btn("Ветка", cb("branch", topic_id))])
+    rows.append([_btn("Обновить", cb("refresh", topic_id)), _btn("Скрыть", cb("hide", topic_id))])
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
-def sessions_kb(topic_id: int, session_ids: list[str]) -> InlineKeyboardMarkup:
-    rows = [[_btn(f"🔗 {sid[:8]}", cb("rs", topic_id, sid[:8])), _btn("🌿", cb("br", topic_id, sid[:8]))]
-            for sid in session_ids]
+def sessions_kb(topic_id: int, entries: list[tuple[str, bool]]) -> InlineKeyboardMarkup:
+    """entries: (session id, same folder as the topic). Same folder → continue here; else a new topic."""
+    rows = []
+    for sid, same_folder in entries:
+        if same_folder:
+            rows.append([_btn(f"Продолжить здесь {sid[:8]}", cb("rs", topic_id, sid[:8]))])
+        else:
+            rows.append([_btn(f"Новая тема {sid[:8]}", cb("ns", topic_id, sid[:8]))])
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
@@ -60,10 +65,10 @@ def sessions_kb(topic_id: int, session_ids: list[str]) -> InlineKeyboardMarkup:
 
 def permission_kb(topic_id: int, prompt_id: int, always_label: str | None) -> InlineKeyboardMarkup:
     pid = str(prompt_id)
-    rows = [[_btn("✅ Разрешить", cb("pa", topic_id, pid)), _btn("❌ Отклонить", cb("pd", topic_id, pid))]]
+    rows = [[_btn("Разрешить", cb("pa", topic_id, pid)), _btn("Отклонить", cb("pd", topic_id, pid))]]
     if always_label:
-        rows.append([_btn(f"🔓 Всегда: {always_label}"[:64], cb("pw", topic_id, pid))])
-    rows.append([_btn("✏️ Отклонить и объяснить", cb("pc", topic_id, pid))])
+        rows.append([_btn(f"Всегда: {always_label}"[:64], cb("pw", topic_id, pid))])
+    rows.append([_btn("Отклонить и объяснить", cb("pc", topic_id, pid))])
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
@@ -76,14 +81,14 @@ def question_kb(topic_id: int, prompt_id: int, labels: list[str], *, multi: bool
         rows.append([_btn((mark + label)[:64], cb("qo", topic_id, f"{pid}:{i}"))])
     if multi:
         rows.append([_btn("Готово", cb("qd", topic_id, pid))])
-    rows.append([_btn("✍ Свой ответ", cb("qc", topic_id, pid))])
+    rows.append([_btn("Свой ответ", cb("qc", topic_id, pid))])
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
 def plan_kb(topic_id: int, prompt_id: int) -> InlineKeyboardMarkup:
     pid = str(prompt_id)
     return InlineKeyboardMarkup(inline_keyboard=[
-        [_btn("✅ Выполнять (правки без вопросов)", cb("pl", topic_id, f"{pid}:accept"))],
-        [_btn("✅ Выполнять, спрашивать про правки", cb("pl", topic_id, f"{pid}:ask"))],
-        [_btn("✏️ Доработать", cb("pl", topic_id, f"{pid}:rework"))],
+        [_btn("Выполнять, правки без вопросов", cb("pl", topic_id, f"{pid}:accept"))],
+        [_btn("Выполнять, спрашивать про правки", cb("pl", topic_id, f"{pid}:ask"))],
+        [_btn("Доработать план", cb("pl", topic_id, f"{pid}:rework"))],
     ])

@@ -71,6 +71,15 @@ class TopicsRepo:
     async def find_by_session(self, session_id) -> dict | None:
         return _row(await self.db.fetchrow("SELECT * FROM topics WHERE session_id = $1", session_id))
 
+    async def remember_past_session(self, topic_id: int, keep: int = 20) -> None:
+        """Before the topic switches sessions: keep the current id so /sessions can label it."""
+        row = await self.get_by_id(topic_id)
+        if not row or not row.get("session_id"):
+            return
+        past = [p for p in (row.get("settings") or {}).get("past_sessions", []) if p != str(row["session_id"])]
+        past.append(str(row["session_id"]))
+        await self.update_settings(topic_id, past_sessions=past[-keep:])
+
     async def update_settings(self, topic_id: int, **fields: Any) -> dict:
         """Merge into topics.settings (None values remove keys)."""
         row = await self.get_by_id(topic_id)

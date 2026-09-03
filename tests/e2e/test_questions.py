@@ -21,7 +21,7 @@ async def test_single_choice_question_answers_with_the_label(app, spy, fake_clau
     await feed(app, text_update("сделай отчёт"))
     card = await wait_card(spy, "❓ Формат")
     assert card["rich_message"]["markdown"] == "❓ Формат\nКак оформить вывод?"
-    assert button_texts(card) == ["Summary — кратко", "Detailed — с примерами", "✍ Свой ответ"]
+    assert button_texts(card) == ["Summary — кратко", "Detailed — с примерами", "Свой ответ"]
     assert buttons(card) == ["qo:1:1:0", "qo:1:1:1", "qc:1:1"]
     for _ in range(50):
         if any("❓ жду ответа" in p["rich_message"]["markdown"] for p in spy.calls("SendRichMessageDraft")):
@@ -47,12 +47,12 @@ async def test_multi_select_toggles_and_done_sends_a_list(app, spy, fake_claude)
     await feed(app, text_update("собери релиз"))
     card = await wait_card(spy, "❓ Вопрос")
     assert "_(можно выбрать несколько)_" in card["rich_message"]["markdown"]
-    assert button_texts(card) == ["☐ Тесты", "☐ Доки", "☐ Бенчмарки", "Готово", "✍ Свой ответ"]
+    assert button_texts(card) == ["☐ Тесты", "☐ Доки", "☐ Бенчмарки", "Готово", "Свой ответ"]
     mid = await card_message_id(app)
     await run(app, callback_update("qo:1:1:0", message_id=mid))
     await run(app, callback_update("qo:1:1:2", message_id=mid))
     kb = spy.calls("EditMessageText")[-1]
-    assert button_texts(kb) == ["☑ Тесты", "☐ Доки", "☑ Бенчмарки", "Готово", "✍ Свой ответ"]
+    assert button_texts(kb) == ["☑ Тесты", "☐ Доки", "☑ Бенчмарки", "Готово", "Свой ответ"]
     await run(app, callback_update("qo:1:1:2", message_id=mid))          # toggle off again
     assert button_texts(spy.calls("EditMessageText")[-1])[2] == "☐ Бенчмарки"
     assert fake_claude.decisions() == []

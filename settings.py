@@ -22,6 +22,7 @@ NOTIFY_CHAT: str | None = os.environ.get("NOTIFY_CHAT") or None   # "chat_id" or
 WORK_ROOT: str = os.environ.get("WORK_ROOT", "/work")      # /cd never leaves this directory
 DEFAULT_CWD: str | None = os.environ.get("DEFAULT_CWD") or None   # None -> WORK_ROOT
 PROJECTS: dict[str, str] = {}                             # alias -> path, for /go and /project
+NEW_PROJECTS_DIR: str | None = None                       # /project new <name> creates folders here (None -> WORK_ROOT)
 
 # --- Claude Code ----------------------------------------------------------------
 CLAUDE_BIN: str = os.environ.get("CLAUDE_BIN", "claude")

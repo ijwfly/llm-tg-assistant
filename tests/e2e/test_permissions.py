@@ -54,7 +54,7 @@ async def test_bash_request_shows_a_card_and_allow_returns_updated_input(app, sp
     assert md.startswith("🔐 **Bash** просит разрешение") and "```bash\ncargo test --workspace\n```" in md
     assert "_Проверить тесты_" in md
     assert buttons(card) == ["pa:1:1", "pd:1:1", "pw:1:1", "pc:1:1"]
-    assert button_texts(card)[2] == "🔓 Всегда: Bash(cargo test *)"
+    assert button_texts(card)[2] == "Всегда: Bash(cargo test *)"
     assert fake_claude.decisions() == []          # the fake is blocked on the socket
     argv = fake_claude.argv_calls()[-1]
     assert argv[argv.index("--permission-prompt-tool") + 1] == "mcp__tgbridge__approve"
@@ -89,7 +89,7 @@ async def test_always_button_adds_a_local_rule_and_remembers_it(app, spy, fake_c
     bash_turn(fake_claude, command="git status")
     await feed(app, text_update("что в гите?"))
     card = await wait_card(spy)
-    assert button_texts(card)[2] == "🔓 Всегда: Bash(git status *)"
+    assert button_texts(card)[2] == "Всегда: Bash(git status *)"
     await feed(app, callback_update("pw:1:1", message_id=await card_message_id(app)))
     await wait_for_text(spy, LONG.strip())
     decision = fake_claude.decisions()[0]
@@ -196,7 +196,7 @@ async def test_write_card_shows_the_new_file_and_unknown_tool_is_masked(app, spy
     card2 = await wait_card(spy, "mcp__github__create_issue")
     md2 = card2["rich_message"]["markdown"]
     assert "sk-verysecret" not in md2 and '"api_token": "•••"' in md2
-    assert button_texts(card2)[2] == "🔓 Всегда: mcp__github__create_issue"
+    assert button_texts(card2)[2] == "Всегда: mcp__github__create_issue"
     await feed(app, callback_update("pd:1:2", message_id=await card_message_id(app)))
     await wait_turn_finished(app)
     assert [d["behavior"] for d in fake_claude.decisions()] == ["allow", "deny"]

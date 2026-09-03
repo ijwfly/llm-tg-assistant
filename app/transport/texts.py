@@ -52,7 +52,12 @@ VOICE_TOO_BIG = "⚠️ Голосовое больше {limit} МБ. Пропу
 EDIT_SEEN = "✏️ Вижу правку — отвечаю на неё."
 FILES_EMPTY = "В этой теме файлов пока нет."
 
-SESSIONS_EMPTY = "В {cwd} сессий пока нет."
+SESSIONS_EMPTY = "Внутри {root} сессий Claude Code пока нет."
+SESSIONS_OUTSIDE = "ещё {n} вне {root} — бот туда не ходит"
+SESSION_TOPIC_HELLO = "Продолжаю сессию {short} · «{title}»\nПапка: {cwd}\nПиши сюда."
+PROJECT_NEW_CREATED = "📁 Создала папку {path}."
+PROJECT_NEW_BAD_NAME = "Имя папки — одно слово без / и .. : /project new my-app"
+PROJECT_NEW_USAGE = "Как назвать? /project new <имя> создаст папку в {dir}."
 SESSION_NOT_FOUND = "Не нашла сессию «{query}». /sessions покажет, что есть."
 SESSION_AMBIGUOUS = "Под «{query}» подходят несколько сессий:\n{rows}\nУточни id."
 RESUMED = "🔗 Подключилась к сессии {short} · «{title}»\nДиректория: {cwd}"
@@ -62,7 +67,7 @@ BRANCH_OPENED = "🌿 Ветка «{name}» открыта."
 BRANCH_HELLO = "🌿 Продолжаю с копии контекста сессии {short}. Пиши сюда."
 PROJECT_OPENED = "✅ Тема «{name}» открыта."
 PROJECT_HELLO = "📁 {path}\nТема готова, контекст чистый. Пиши сюда."
-PROJECT_USAGE = "Куда? /project <алиас | путь> создаст тему под проект."
+PROJECT_USAGE = "Куда? /project <алиас | путь> — тема под существующую папку; /project new <имя> — новая папка, сессия и тема."
 TOPIC_CREATE_FAILED = "⚠️ Не могу создать тему: {reason}. Нужен чат с включёнными темами (форум или личка с topics) и право «Управление темами»."
 RENAMED = "✏️ {name}"
 RENAME_USAGE = "Как назвать? /rename <имя>."
@@ -153,11 +158,19 @@ def go_list(projects: dict[str, str]) -> str:
     return "Куда идём:\n" + "\n".join(f"/go {alias} — {path}" for alias, path in projects.items())
 
 
-def sessions_card(cwd: str, rows: list[tuple[str, str, str, str]]) -> str:
-    """rows: (short id, ago, title, where)."""
+def sessions_card(root: str, rows: list[tuple[str, str, str, str, str]], outside: int = 0) -> str:
+    """rows: (folder relative to root, short id, ago, title, where)."""
     if not rows:
-        return SESSIONS_EMPTY.format(cwd=cwd)
-    return f"Сессии в {cwd}:\n" + "\n".join(f"▸ {short} · {when} · «{title[:60]}» · {where}" for short, when, title, where in rows)
+        text = SESSIONS_EMPTY.format(root=root)
+    else:
+        lines = [f"Сессии Claude Code в {root}:"]
+        for folder, short, when, title, where in rows:
+            line = f"▸ {folder} · {short} · {when} · «{title[:60]}»"
+            lines.append(line + (f" · {where}" if where else ""))
+        text = "\n".join(lines)
+    if outside:
+        text += "\n" + SESSIONS_OUTSIDE.format(n=outside, root=root)
+    return text
 
 
 def files_list(rows: list[dict]) -> str:

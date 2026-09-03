@@ -48,7 +48,7 @@ async def test_branch_creates_a_topic_that_forks_the_session_once(app, spy, fake
     assert argv[argv.index("--resume") + 1] == new_id and "--fork-session" not in argv
 
 
-async def test_branch_button_on_the_sessions_card_forks_a_terminal_session(app, spy, fake_claude):
+async def test_branch_callback_with_a_session_id_forks_a_terminal_session(app, spy, fake_claude):
     await run(app, text_update("/status"))
     topic = (await app.topics.list_all())[0]
     write_transcript(settings.CLAUDE_CONFIG_DIR, topic["cwd"], TERM, ["терминальная"], custom_title="Релиз")
@@ -80,10 +80,39 @@ async def test_project_creates_a_topic_for_an_alias_and_a_path(app, spy, fake_cl
     assert fake_claude.cwds()[-1] == infra["cwd"]
 
 
+async def test_project_new_creates_folder_session_and_topic(app, spy, fake_claude, tmp_path):
+    await run(app, text_update("/project new demo-app"))
+    path = (tmp_path / "work" / "demo-app").resolve()
+    assert path.is_dir()
+    assert f"📁 Создала папку {path}." in spy.sent_texts() and "✅ Тема «demo-app» открыта." in spy.sent_texts()
+    assert spy.calls("CreateForumTopic")[-1]["name"] == "demo-app"
+    new = next(t for t in await app.topics.list_all() if t["thread_id"] == 100)
+    assert new["cwd"] == str(path) and new["session_resumable"] is False
+    fake_claude.text_turn(LONG)
+    await feed(app, text_update("создай README", thread_id=100, topic_name="demo-app"))
+    await wait_for_text(spy, LONG.strip())
+    assert fake_claude.cwds()[-1] == str(path)
+    argv = fake_claude.argv_calls()[-1]
+    assert argv[argv.index("--session-id") + 1] == str(new["session_id"])
+    await run(app, text_update("/project new demo-app"))               # existing folder: just a topic
+    assert not spy.last_text().startswith("📁 Создала") and spy.calls("CreateForumTopic")[-1]["name"] == "demo-app"
+
+
+async def test_project_new_rejects_bad_names_and_explains_usage(app, spy, fake_claude, tmp_path):
+    settings.NEW_PROJECTS_DIR = str(tmp_path / "work" / "projects")
+    await run(app, text_update("/project new"))
+    assert spy.last_text() == f"Как назвать? /project new <имя> создаст папку в {(tmp_path / 'work' / 'projects').resolve()}."
+    await run(app, text_update("/project new ../evil"))
+    assert spy.last_text().startswith("Имя папки — одно слово")
+    assert spy.calls("CreateForumTopic") == []
+    await run(app, text_update("/project new ok"))
+    assert (tmp_path / "work" / "projects" / "ok").is_dir()
+
+
 async def test_project_usage_bad_path_and_telegram_refusal(app, spy, fake_claude, tmp_path):
     settings.PROJECTS = {"app": "/work/app"}
     await run(app, text_update("/project"))
-    assert spy.last_text().startswith("Куда? /project") and "/go app — /work/app" in spy.last_text()
+    assert spy.last_text().startswith("Куда? /project") and "/project new <имя>" in spy.last_text() and "/go app — /work/app" in spy.last_text()
     await run(app, text_update("/project /nope"))
     assert spy.last_text().startswith("⚠️ нет такой директории")
     (tmp_path / "work" / "x").mkdir()
