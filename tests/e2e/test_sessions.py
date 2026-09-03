@@ -78,9 +78,10 @@ async def test_new_topic_button_creates_a_topic_bound_to_the_sessions_folder(app
     other.mkdir()
     write_transcript(settings.CLAUDE_CONFIG_DIR, str(other), OTHER, ["в другом проекте"], custom_title="Релиз 2.0")
     await run(app, callback_update("ns:1:bbbbbbbb"))
-    assert spy.calls("CreateForumTopic")[-1]["name"] == "other: Релиз 2.0"
+    assert spy.calls("CreateForumTopic")[-1]["name"] == "other"           # topics are named after their folder
     new = next(t for t in await app.topics.list_all() if t["thread_id"] == 100)
     assert new["cwd"] == str(other.resolve()) and str(new["session_id"]) == OTHER and new["session_resumable"] is True
+    assert new["settings"]["title_implicit"] is True
     hello = next(p for p in spy.calls("SendMessage") if p["text"].startswith("Продолжаю сессию bbbbbbbb"))
     assert hello["message_thread_id"] == 100 and f"Папка: {other.resolve()}" in hello["text"]
     fake_claude.text_turn(LONG)
@@ -120,6 +121,21 @@ async def test_resume_by_prefix_switches_the_topic_and_resumes_on_the_next_turn(
     await wait_for_text(spy, LONG.strip())
     argv = fake_claude.argv_calls()[-1]
     assert argv[argv.index("--resume") + 1] == TERM and "--fork-session" not in argv
+
+
+async def test_folder_named_topic_follows_a_resume_into_another_folder(app, spy, fake_claude, tmp_path):
+    await run(app, text_update("/status", thread_id=5, topic_name="Тема 1"))
+    await app.store.topics.update_settings(1, title_implicit=True)          # never named by the user
+    other = tmp_path / "work" / "other"
+    other.mkdir()
+    write_transcript(settings.CLAUDE_CONFIG_DIR, str(other), OTHER, ["в другом проекте"])
+    await run(app, callback_update("rs:1:bbbbbbbb"))
+    edit = spy.calls("EditForumTopic")[-1]
+    assert edit["name"] == "other" and (await app.topics.list_all())[0]["title"] == "other"
+    await run(app, text_update("/rename Моё имя", thread_id=5, topic_name="other"))
+    write_transcript(settings.CLAUDE_CONFIG_DIR, str(tmp_path / "work"), TERM, ["в корне"])
+    await run(app, callback_update("rs:1:aaaaaaaa"))
+    assert (await app.topics.list_all())[0]["title"] == "Моё имя"         # an explicit name is pinned
 
 
 async def test_resume_moves_the_topic_into_the_sessions_directory(app, spy, fake_claude, tmp_path):

@@ -60,7 +60,8 @@ from both; button labels are words, never bare emoji (user decision); live-view 
 are produced by `sender.dump_method` (drops aiogram `Default` sentinels, keeps discriminators); `mcp_server.py` must stay
 stdlib-only (it runs from the topic's cwd under the daemon's interpreter and never imports the app); a pending prompt is
 resolved exactly once (`PendingPrompt.future`), and every path that ends a turn calls `prompts.abandon`; `topics.settings`
-(jsonb) holds per-topic flags (`fork`, `title_implicit`) — merge through `TopicsRepo.update_settings`; the only direct Bot API
+(jsonb) holds per-topic flags (`fork`, `title_implicit` = the name follows the folder until `/rename`) — merge through `TopicsRepo.update_settings`;
+topics are named after their folder (`actions.folder_name`), never after the prompt; the only direct Bot API
 calls outside the live view are `createForumTopic` / `deleteForumTopic` in `actions` (their result decides what happens next).
 
 **Claude Code facts that shape the code** (verified in phase 0): `claude -p` needs `--verbose`

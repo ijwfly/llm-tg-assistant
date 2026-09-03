@@ -5,6 +5,13 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Changed
+
+- **Topics are named after their folder.** A topic the user created without a name is renamed to its
+  folder at the first message (before: to the first prompt after the first turn); «Новая тема» from the
+  sessions card, `/project <path>` and `/project new` name the topic after the folder too. Until `/rename`
+  pins a name it follows the folder when the topic moves. See `specs/PROJECT_SPEC.md` §4.2.
+
 ### Added
 
 - **Paged sessions card.** The «Sessions» list shows `SESSIONS_PAGE_SIZE` (8) rows per page with
