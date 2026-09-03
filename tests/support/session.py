@@ -1,0 +1,61 @@
+"""Recording aiogram session: captures every outgoing call and returns aiogram's own objects."""
+from __future__ import annotations
+
+import itertools
+import typing
+from datetime import datetime, timezone
+
+from aiogram import Bot
+from aiogram.client.session.base import BaseSession
+from aiogram.methods import TelegramMethod
+from aiogram.types import Chat, Message, User
+
+
+class RecordingSession(BaseSession):
+    def __init__(self):
+        super().__init__()
+        self.calls: list[tuple[str, dict]] = []          # calls Telegram accepted
+        self.failed_calls: list[tuple[str, dict]] = []   # calls that hit an injected failure
+        self._fail: dict[str, list[Exception]] = {}
+        self._message_ids = itertools.count(1000)
+
+    def fail_next(self, method_name: str, exc: Exception) -> None:
+        """Inject `exc` into the next call of `method_name` (e.g. "SendMessage")."""
+        self._fail.setdefault(method_name, []).append(exc)
+
+    async def close(self) -> None:
+        pass
+
+    async def stream_content(self, *args, **kwargs):  # pragma: no cover - not used
+        if False:
+            yield b""
+
+    async def make_request(self, bot: Bot, method: TelegramMethod, timeout: int | None = None):
+        name = type(method).__name__
+        payload = method.model_dump(exclude_none=True, exclude_defaults=True, mode="json")
+        queue = self._fail.get(name)
+        if queue:
+            self.failed_calls.append((name, payload))
+            raise queue.pop(0)
+        self.calls.append((name, payload))
+        return self._build_result(bot, method)
+
+    def _build_result(self, bot: Bot, method: TelegramMethod):
+        returning = method.__returning__
+        candidates = set(typing.get_args(returning)) or {returning}
+        if Message in candidates:
+            chat_id = getattr(method, "chat_id", 0)
+            return Message(
+                message_id=next(self._message_ids),
+                date=datetime.now(timezone.utc),
+                chat=Chat(id=chat_id, type="private" if chat_id > 0 else "supergroup"),
+                text=getattr(method, "text", None),
+                message_thread_id=getattr(method, "message_thread_id", None),
+            )
+        if User in candidates:
+            return User(id=bot.id, is_bot=True, first_name="Test Bot", username="testbot")
+        if bool in candidates:
+            return True
+        if typing.get_origin(returning) is list:
+            return []
+        raise NotImplementedError(f"RecordingSession: no result builder for {name} -> {returning}")

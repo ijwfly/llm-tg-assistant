@@ -1,0 +1,25 @@
+# Copy to settings_local.py and fill in. Every value here overrides settings.py.
+# settings_local.py is gitignored; never commit tokens.
+
+# --- Required -----------------------------------------------------------------
+# TELEGRAM_BOT_TOKEN = "123456:ABC..."
+# ALLOWED_USERS = [123456789]            # /whoami shows your id
+# DATABASE_URL = "postgresql://app:app@localhost:5432/app"
+
+# --- Optional -----------------------------------------------------------------
+# ALLOWED_CHATS = []                     # empty = anywhere an allowed user writes
+# NOTIFY_CHAT = "123456789"              # or "-1001234567890:42" for a forum topic
+# WORK_ROOT = "/work"
+# DEFAULT_CWD = "/work/my-project"
+# PROJECTS = {"app": "/work/my-project", "infra": "/work/infra"}
+
+# --- Claude Code ----------------------------------------------------------------
+# CLAUDE_BIN = "claude"
+# CLAUDE_CONFIG_DIR = "/home/app/.claude"
+# DEFAULT_PERMISSION_MODE = "prompt"     # prompt | acceptEdits | plan | auto | dontAsk | bypass
+# ALLOW_BYPASS = False
+# DEFAULT_MODEL = None                   # e.g. "sonnet"
+# DEFAULT_EFFORT = None                  # low | medium | high | xhigh | max
+
+# --- Features -------------------------------------------------------------------
+# LOG_LEVEL = "DEBUG"

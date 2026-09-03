@@ -1,6 +1,6 @@
 # PROJECT_SPEC — нативное управление сессиями Claude Code через Telegram
 
-Status: фаза 0 из 9 done — spike-эксперименты закрыли assumed-факты; фаза 1 (скелет) не начата
+Status: фаза 1 из 9 done — скелет, outbox и тестовая инфраструктура готовы, tests green; фаза 2 (процесс и ход) не начата
 
 Документ объединяет идеи двух референсов — `reference_spec_claude_code.md` (мост claude-tg:
 тема форума = сессия Claude Code) и `reference_spec_tg_ux.md` (нативный чат-UX для LLM в
@@ -882,7 +882,7 @@ Database / Features.
 | # | Фаза | Что входит | Тесты | Статус |
 |---|---|---|---|---|
 | 0 | Spike | Эксперименты 2.3 против реального `claude`; результаты — в раздел 2 этой спеки | скрипты в `spikes/`, без suite | ✅ |
-| 1 | Скелет | `settings.py`, БД + миграции, compose, aiogram polling, access middleware, dedup, outbox, `/help`, `/whoami`, `/topics`; e2e-инфра: recording session, fake `claude`, `scripts/test.sh`; `specs/E2E_TESTS.md` | доступ (чужой молчит), outbox доставка/повтор/429, dedup | ⏳ |
+| 1 | Скелет | `settings.py`, БД + миграции, compose, aiogram polling, access middleware, dedup, outbox, `/help`, `/whoami`, `/topics`; e2e-инфра: recording session, fake `claude`, `scripts/test.sh`; `specs/E2E_TESTS.md` | доступ (чужой молчит), outbox доставка/повтор/429, dedup | ✅ |
 | 2 | Процесс и ход | `ClaudeProcess`, парсер stream-json, `TurnRunner`, очередь темы, `/new`, `/stop`, `/cancel`, `/retry`, `/status`, `/cd`, `/go`, плоская доставка ответа (rich без стриминга), сообщения конца хода и обрыва, idle/turn таймауты | простой ход, очередь, cancel, падение+retry, resume после idle, compact_boundary | ⏳ |
 | 3 | Стриминг и рендер | draft в личке (`<tg-thinking>`, can_stop, keepalive), прогресс в группах, шлюзы, сплиттер, plain-fallback, файл при длинном ответе, склейка сегментов, thinking-превью | границы контента, fallback, stop через draft, 429 на правке | ⏳ |
 | 4 | Входной конвейер | батчер, prompt/staging, форварды, медиа (фото → image block + inbox, документы, голос/STT), reply-цитаты, правки, реакции, `/files`, чистка inbox | альбом = один ход, staging уходит со следующим ходом, форвард без ответа, файл > 20 МБ | ⏳ |
@@ -899,6 +899,9 @@ Database / Features.
   через SIGINT завершает процесс (следующий ход — resume), `--verbose` обязателен, парсер
   должен игнорировать незнакомые события. Открытый вопрос 7 (SDK vs CLI) снят: сырой CLI
   даёт всё нужное.
+- **Фаза 1** (2026-09-03): скелет по `specs/PHASE_1_SKELETON.md`, 20 тестов зелёные. Outbox
+  выбирает голову очереди темы до проверки due-времени (иначе повтор ломал порядок). Ходы,
+  процесс `claude` и rich-вывод — фазы 2–3.
 
 ---
 

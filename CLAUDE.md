@@ -1,6 +1,46 @@
-# CLAUDE.md — development workflow
+# CLAUDE.md — project map and development workflow
 
-This file defines how work is done in this repository: the development loop, testing, git, specs, documentation, configuration and deployment. Follow it for every change, big or small. Placeholders in angle brackets (`<main>`, `<owner/repo>`) are project-specific values; replace them once when adopting this file.
+This file is the map of the project (§0) and defines how work is done in this repository: the development loop, testing, git, specs, documentation, configuration and deployment. Follow it for every change, big or small.
+
+## 0. Project map
+
+**What**: a Telegram bot that drives Claude Code sessions on a server with a native chat UX —
+one forum topic (or private-chat topic) = one Claude Code session. Design: `specs/PROJECT_SPEC.md`
+(read its status line first); phase specs `specs/PHASE_*.md`; tests `specs/E2E_TESTS.md`.
+
+**Run**: `cp .env.example .env`, `cp settings_local.py.example settings_local.py`, fill the
+token and `ALLOWED_USERS`, then `docker compose up -d --build`. Locally: `.venv/bin/python -m app.main`.
+**Test**: `bash scripts/test.sh [-k name -v]` (needs Docker for the test Postgres).
+
+**Layout** (Python 3.12, aiogram 3.31, asyncpg, Postgres 16):
+
+| Path | Concern |
+|---|---|
+| `settings.py` / `settings_local.py` | defaults (env-var backed) / secrets and overrides, gitignored |
+| `app/main.py` | entry point: validate settings, connect DB, migrate, polling |
+| `app/app.py` | `App`: wires store, sender, outbox worker, topics, dispatcher; start/stop notices |
+| `app/store/db.py`, `repos.py`, `migrations/` | asyncpg pool, idempotent `NNNN_*.sql` migrations (applied by the DB container init **and** at app start), repositories |
+| `app/transport/bot.py` | dispatcher wiring, `ALLOWED_UPDATES`, command menu |
+| `app/transport/middleware.py` | `AccessMiddleware` (ALLOWED_USERS/ALLOWED_CHATS, silent), `DedupMiddleware` (update_id, marked before handling) |
+| `app/transport/handlers.py` | commands and messages; `build_router()` per dispatcher; `topic_ref()` maps a message to `(chat_id, thread_id)` |
+| `app/transport/sender.py`, `outbox.py` | the only door for outgoing calls: rows in `outbox`, worker delivers per-topic in order, parallel across topics, 429/backoff/failed |
+| `app/transport/texts.py` | every user-facing string (Russian) |
+| `app/core/topics.py` | `TopicRef`, `TopicService` |
+| `spikes/` | phase-0 experiment scripts against the real `claude` (documentation, not product code) |
+| `tests/` | e2e (real dispatcher + real Postgres + recording Telegram session), unit, `fake_claude/` |
+
+**Request flow**: Telegram update → `AccessMiddleware` → `DedupMiddleware` → router handler →
+`TopicService` → `TelegramSender.enqueue` → `outbox` table → `OutboxWorker` → Bot API.
+
+**Key patterns**: read `settings.X` at call time (tests override the module); never call the
+Bot API directly from handlers — enqueue through `TelegramSender`; strings live in `texts.py`;
+a message belongs to a topic only when `is_topic_message` is set.
+
+**Claude Code facts that shape the code** (verified in phase 0): `claude -p` needs `--verbose`
+with stream-json; assistant events arrive one content block at a time; SIGINT ends the turn and
+the process; the permission prompt tool receives `{tool_name, input, tool_use_id}` and answers
+with `{"behavior": ...}` JSON; `updatedPermissions` with `localSettings` writes
+`.claude/settings.local.json`.
 
 ## 1. Development cycle
 
@@ -8,7 +48,7 @@ Every task goes through the same loop:
 
 1. **Understand the task.** Read the relevant code and the existing specs in `specs/` before proposing anything. Reuse existing helpers and patterns; do not add a second way of doing something that already has one.
 2. **Spec first for anything non-trivial.** A multi-step change (new feature, migration, refactor touching several modules) gets a spec in `specs/` with phases before any code is written (§4). Small fixes do not need a spec.
-3. **Branch.** Never work on `<main>`. Create `claude/<topic>` from `<main>`, or from the currently open feature branch when the new work depends on it (§3).
+3. **Branch.** Never work on `main`. Create `claude/<topic>` from `main`, or from the currently open feature branch when the new work depends on it (§3).
 4. **Implement in phases.** Keep each phase small enough to review and to attribute a test failure to. After **any** code change run the full test suite (§2) and fix failures before moving on.
 5. **Update documentation in the same phase**: the spec's status line and phase table, the affected section of `CLAUDE.md`, and the `CHANGELOG.md` entry (§5).
 6. **Commit per phase with tests green, push the branch, open a PR** (§3). The user merges; do not merge yourself.
@@ -51,9 +91,9 @@ Every task goes through the same loop:
 
 ### Branches
 
-- **Never push to `<main>`**, even when the request is a bare "push". Every change goes through a feature branch and a pull request; the user merges.
-- Branch naming: `claude/<topic>`. Branch from `<main>` by default.
-- **Stacked branches**: if an earlier feature PR is still open and the new work builds on it, branch from that feature branch and open the PR with `--base <that branch>`. Check `gh pr list` before creating a branch. Do not rebase a stacked branch onto `<main>` unless asked.
+- **Never push to `main`**, even when the request is a bare "push". Every change goes through a feature branch and a pull request; the user merges.
+- Branch naming: `claude/<topic>`. Branch from `main` by default.
+- **Stacked branches**: if an earlier feature PR is still open and the new work builds on it, branch from that feature branch and open the PR with `--base <that branch>`. Check `gh pr list` before creating a branch. Do not rebase a stacked branch onto `main` unless asked.
 - One branch per spec; phases run sequentially on that branch. Follow-ups after review go into the same branch until it is merged.
 
 ### Commits
