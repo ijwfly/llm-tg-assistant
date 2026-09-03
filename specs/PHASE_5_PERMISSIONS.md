@@ -1,6 +1,6 @@
 # PHASE_5_PERMISSIONS — разрешения, вопросы и планы кнопками
 
-Status: phase 2 of 4 — карточки разрешений готовы; вопросы AskUserQuestion
+Status: all phases done — разрешения, вопросы и планы кнопками; tests green (143 passed); живая проверка — smoke ниже
 
 ## Why
 
@@ -68,9 +68,9 @@ Status: phase 2 of 4 — карточки разрешений готовы; в�
 | # | Phase | Status |
 |---|---|---|
 | 1 | MCP-сервер, сокет, `PromptService`, карточка разрешения (allow/deny/always/comment/timeout/stale/cancel), правила, `/perm` с правилами и `forget`, индикатор | ✅ |
-| 2 | `AskUserQuestion`: карточки, multiSelect, свой ответ, таймаут | ⏳ |
-| 3 | `ExitPlanMode`: карточка плана, setMode, доработка | ⏳ |
-| 4 | Документация: `E2E_TESTS.md`, `CHANGELOG.md`, `CLAUDE.md`, `PROJECT_SPEC.md`; живая проверка | ⏳ |
+| 2 | `AskUserQuestion`: карточки, multiSelect, свой ответ, таймаут | ✅ |
+| 3 | `ExitPlanMode`: карточка плана, setMode, доработка | ✅ |
+| 4 | Документация: `E2E_TESTS.md`, `CHANGELOG.md`, `CLAUDE.md`, `PROJECT_SPEC.md`; живая проверка | ✅ (smoke — у пользователя) |
 
 ## Tests
 
@@ -89,6 +89,11 @@ Status: phase 2 of 4 — карточки разрешений готовы; в�
   ждёт решения по сокету — путь «CLI → MCP → сокет → карточка → кнопка → решение» покрыт целиком.
   `PromptService` заодно реализует вопросы и планы (общий код); их тесты — фазы 2–3. Сокет-обработчик
   следит за EOF от MCP-клиента: если `claude` умер, запрос закрывается как прерванный.
+- **Фазы 2–3**: 143 теста; код вопросов/планов был в `PromptService` с фазы 1, добавлены
+  `e2e/test_questions.py`, `e2e/test_plans.py`. Отклонение от спеки 4.7.1: свободный ответ
+  кладётся в `answers[<вопрос>]` строкой, отдельного поля `response` нет (spike показал, что
+  модель читает `answers`).
+- **Фаза 4**: документация; `docker-compose.yml` задаёт `BRIDGE_SOCKET=/data/bridge.sock`.
 
 ## Manual smoke checklist
 

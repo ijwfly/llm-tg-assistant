@@ -27,10 +27,12 @@ token and `ALLOWED_USERS`, then `docker compose up -d --build`. Locally: `.venv/
 | `app/transport/texts.py` | every user-facing string (Russian) |
 | `app/core/topics.py` | `TopicRef`, `TopicService` |
 | `app/core/runtime.py` | `TopicRuntime` (queue, worker task, claude process, idle timer, turn loop, verdicts), `RuntimeRegistry` |
-| `app/bridge/cli.py`, `process.py`, `events.py` | argv/env builder (permission-mode map, secret stripping), `ClaudeProcess` (spawn, stdin, events, SIGINT, graceful stop), typed stream-json events |
-| `app/render/markdown.py`, `progress.py`, `keyboards.py` | fence-aware splitter and preview rules; progress line, tool trail, draft/progress content; inline keyboards and `callback_data` codec |
+| `app/bridge/cli.py`, `process.py`, `events.py` | argv/env builder (permission-mode map, prompt tool + inline `--mcp-config`, secret stripping), `ClaudeProcess` (spawn, stdin, events, SIGINT, graceful stop), typed stream-json events |
+| `app/bridge/mcp_server.py`, `socket_server.py`, `rules.py` | stdlib-only stdio MCP server (`approve`) launched by `claude`, forwards to the daemon's unix socket (`BRIDGE_SOCKET`); `BridgeSocket` server; «Всегда» rule matrix, `updatedPermissions`, forgetting rules in `.claude/settings.local.json` |
+| `app/core/prompts.py` | `PromptService`: pending permission/question/plan prompts, cards, buttons, awaited text, timeouts, abandon on cancel; token → runtime registry |
+| `app/render/markdown.py`, `progress.py`, `keyboards.py`, `cards.py` | fence-aware splitter and preview rules; progress line, tool trail, draft/progress content; inline keyboards and `callback_data` codec; permission (diff/masking), question and plan cards |
 | `app/core/liveview.py` | `LiveView`: draft (private) or progress message (groups), trailing-edge gate, 429, keepalive, delete after finals |
-| `app/core/actions.py` | topic actions shared by commands and buttons (new, stop, cancel, retry, continue, perm, card) |
+| `app/core/actions.py` | topic actions shared by commands and buttons (new, stop, cancel, retry, continue, perm, perm forget, card) |
 | `app/transport/callbacks.py` | inline-button dispatcher → `actions`; stale buttons answer a toast |
 | `app/ingest/batcher.py`, `classify.py`, `pipeline.py`, `files.py`, `transcribe.py` | sliding-window batcher per topic; prompt/staging matrix, forward attribution, file-name sanitizing; turn assembly (downloads, image blocks, staging consumption, reply quote); inbox with TTL cleanup; external STT command |
 | `spikes/` | phase-0 experiment scripts against the real `claude` (documentation, not product code) |
@@ -39,7 +41,8 @@ token and `ALLOWED_USERS`, then `docker compose up -d --build`. Locally: `.venv/
 **Request flow**: Telegram update → `AccessMiddleware` → `DedupMiddleware` → router handler →
 `TopicService` → `Batcher` (300 ms window) → `Ingest.process_batch` (staging or turn) → `TopicRuntime.submit` → `ClaudeProcess` stdin → stream-json events → `LiveView` (drafts /
 progress edits, direct, ephemeral) and `TelegramSender.enqueue` → `outbox` table → `OutboxWorker` → Bot API
-(rich → plain fallback, `file://` → `FSInputFile`) → `message_links`. Buttons: callback → `callbacks.py` → `actions`.
+(rich → plain fallback, `file://` → `FSInputFile`) → `message_links`. Buttons: callback → `callbacks.py` → `actions` / `prompts`.
+**Prompt flow**: `claude` calls `mcp__tgbridge__approve` → `mcp_server.py` → unix socket → `PromptService.handle` (token → runtime) → card via outbox → button / next text message / timeout → decision JSON back → `claude`.
 
 **Key patterns**: read `settings.X` at call time (tests override the module); never call the
 Bot API directly from handlers — enqueue through `TelegramSender`; strings live in `texts.py`;
@@ -47,7 +50,9 @@ a message belongs to a topic only when `is_topic_message` is set; the claude pro
 `TopicRuntime._lock`; a turn ends only on a `result` event (EOF without it = crash → one silent retry);
 buttons first, slash commands as the text fallback — every action lives in `core/actions.py` and is reachable
 from both; live-view updates bypass the outbox (ephemeral), everything the user keeps goes through it; outbox payloads
-are produced by `sender.dump_method` (drops aiogram `Default` sentinels, keeps discriminators).
+are produced by `sender.dump_method` (drops aiogram `Default` sentinels, keeps discriminators); `mcp_server.py` must stay
+stdlib-only (it runs from the topic's cwd under the daemon's interpreter and never imports the app); a pending prompt is
+resolved exactly once (`PendingPrompt.future`), and every path that ends a turn calls `prompts.abandon`.
 
 **Claude Code facts that shape the code** (verified in phase 0): `claude -p` needs `--verbose`
 with stream-json; assistant events arrive one content block at a time; SIGINT ends the turn and

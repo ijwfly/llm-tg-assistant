@@ -31,6 +31,7 @@ services:
       DATABASE_URL: postgresql://${POSTGRES_USER:-app}:${POSTGRES_PASSWORD:-app}@db:5432/${POSTGRES_DB:-app}
       WORK_ROOT: /work
       CLAUDE_CONFIG_DIR: /home/app/.claude
+      BRIDGE_SOCKET: /data/bridge.sock
     volumes:
       - ${WORK_ROOT:-./work}:/work
       - ${CLAUDE_HOME:-~/.claude}:/home/app/.claude

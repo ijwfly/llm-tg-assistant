@@ -21,5 +21,10 @@
 # DEFAULT_MODEL = None                   # e.g. "sonnet"
 # DEFAULT_EFFORT = None                  # low | medium | high | xhigh | max
 
+# --- Permissions ------------------------------------------------------------------
+# BRIDGE_SOCKET = "/tmp/tgbridge.sock"   # unix socket between the claude prompt tool and the bot
+# PERMISSION_TIMEOUT_SECS = 600          # unanswered permission card -> deny
+# QUESTION_TIMEOUT_SECS = 1800           # unanswered question / plan card -> deny
+
 # --- Features -------------------------------------------------------------------
 # LOG_LEVEL = "DEBUG"

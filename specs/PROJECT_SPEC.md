@@ -1,6 +1,6 @@
 # PROJECT_SPEC — нативное управление сессиями Claude Code через Telegram
 
-Status: фаза 4 из 9 done — батчер, staging, медиа и голос, tests green; фаза 5 (разрешения, вопросы, планы) не начата
+Status: фаза 5 из 9 done — разрешения, вопросы и планы кнопками, tests green; фаза 6 (сессии и темы) не начата
 
 Документ объединяет идеи двух референсов — `reference_spec_claude_code.md` (мост claude-tg:
 тема форума = сессия Claude Code) и `reference_spec_tg_ux.md` (нативный чат-UX для LLM в
@@ -786,7 +786,7 @@ claude -p --verbose
 | `topics` | `id PK`, `chat_id`, `thread_id NULL`, `UNIQUE(chat_id, thread_id)`, `title`, `cwd`, `session_id`, `model`, `effort`, `permission_mode`, `soul_path`, `settings jsonb`, `state` (`idle|running|awaiting_input`), `awaiting jsonb`, `created_at`, `last_activity_at` |
 | `turns` | `id PK`, `topic_id`, `prompt jsonb` (для `/retry`), `status` (`queued|running|done|cancelled|error`), `result_subtype`, `duration_ms`, `num_turns`, `cost_usd`, `usage jsonb`, `checkpoints jsonb` (uuid user-сообщений), `started_at`, `finished_at` |
 | `staging_items` | `id`, `topic_id`, `kind` (`forward|document|voice`), `payload jsonb`, `tg_message_id`, `created_at` |
-| `pending_prompts` | `id`, `topic_id`, `turn_id`, `kind` (`permission|question|plan`), `tool_use_id`, `payload jsonb`, `tg_message_id`, `status`, `answer jsonb`, `expires_at` |
+| `pending_prompts` | `id`, `topic_id`, `turn_id`, `kind` (`permission|question|plan`), `tool_name`, `tool_use_id`, `payload jsonb`, `status` (`pending|answered|timeout|cancelled|stale`), `answer jsonb`, `created_at`, `resolved_at` (id сообщения карточки берётся из `outbox`/callback) |
 | `topic_rules` | `topic_id`, `rule`, `created_at`, `PK(topic_id, rule)` |
 | `outbox` | `id`, `topic_key`, `method`, `payload jsonb`, `status`, `attempts`, `next_attempt_at`, `created_at`, `delivered_message_id` |
 | `inbox_files` | `id`, `topic_id`, `path`, `tg_file_id`, `size`, `created_at` |
@@ -913,7 +913,7 @@ Database / Features.
 | 2 | Процесс и ход | `ClaudeProcess`, парсер stream-json, `TurnRunner`, очередь темы, `/new`, `/stop`, `/cancel`, `/retry`, `/status`, `/cd`, `/go`, плоская доставка ответа (rich без стриминга), сообщения конца хода и обрыва, idle/turn таймауты | простой ход, очередь, cancel, падение+retry, resume после idle, compact_boundary | ✅ |
 | 3 | Стриминг, рендер, кнопки | draft в личке (`<tg-thinking>`, can_stop, keepalive), прогресс в группах с `🛑`, шлюзы, fence-aware сплиттер, файл при длинном ответе, склейка сегментов, thinking-превью; слой callback, кнопки на вердиктах, карточка темы с базовыми действиями (новый контекст, стоп, прервать, обновить, скрыть), меню «/» из 4 команд | границы контента, stop через draft и кнопку, 429 на правке, карточка и устаревшие кнопки | ✅ |
 | 4 | Входной конвейер | батчер, prompt/staging, форварды, медиа (фото → image block + inbox, документы, голос/STT), reply-цитаты, правки, реакции, `/files`, чистка inbox | альбом = один ход, staging уходит со следующим ходом, форвард без ответа, файл > 20 МБ | ✅ |
-| 5 | Разрешения, вопросы, планы | MCP-сервер, сокет, `pending_prompts`, карточки (diff-рендер), «Всегда» (suggestions/localSettings и правила моста), `/perm`, таймауты, AskUserQuestion, ExitPlanMode, `AWAITING_INPUT` | allow/deny/always/timeout/устаревшая кнопка, вопрос с multiSelect и свободным ответом, план → acceptEdits | ⏳ |
+| 5 | Разрешения, вопросы, планы | MCP-сервер, сокет, `pending_prompts`, карточки (diff-рендер), «Всегда» (suggestions/localSettings и правила моста), `/perm`, таймауты, AskUserQuestion, ExitPlanMode, `AWAITING_INPUT` | allow/deny/always/timeout/устаревшая кнопка, вопрос с multiSelect и свободным ответом, план → acceptEdits | ✅ |
 | 6 | Сессии и темы | `/sessions` (индекс), `/resume`, `/branch`, `/project` (форум и личка), `/rename`, переименование implicit-тем | resume терминальной сессии, branch в новую тему, project в личке | ⏳ |
 | 7 | Настройки, персона, голос | переключатели прав/модели/усилия и страница `⚙️ Ещё` на карточке темы, `/model`, `/effort`, `/soul`, `/voice`, TTS, `/usage`, `NOTIFY_CHAT` | карточка перерисовывается на месте, TTS не шлётся для сплошного кода | ⏳ |
 | 8 | Дополнения | `send_file`, `verbose_tools`, `FORWARD_SUBAGENT_TEXT`, `/rewind`, задачи из `TaskCreated` hooks, **дополнения пользователя из раздела 12** | по фиче | ⏳ |
@@ -936,6 +936,10 @@ Database / Features.
   меню «/» из трёх команд.
 - **Фаза 4** (2026-09-03): `specs/PHASE_4_INGEST.md`, 106 тестов. Батчер, staging с реакцией 👀,
   фото как image block, документы и голос через inbox, `TRANSCRIBE_CMD`, правки, `/files`.
+- **Фаза 5** (2026-09-03): `specs/PHASE_5_PERMISSIONS.md`, 143 теста. Мост — prompt tool Claude Code:
+  stdlib MCP-сервер → unix-сокет → карточки с кнопками; «Всегда» через `updatedPermissions localSettings`
+  и `/perm forget`; вопросы и планы карточками; ожидание текста без `AWAITING_INPUT` в БД (в памяти
+  `PromptService`). Одобрение плана меняет и режим темы в БД, чтобы respawn не вернул `plan`.
 
 ---
 

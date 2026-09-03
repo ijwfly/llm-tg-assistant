@@ -42,6 +42,17 @@ All notable changes to this project are documented here. The format follows
   inbox with paths, voice via `TRANSCRIBE_CMD` with a 🎤 echo, edited messages as new turns,
   `/files`, inbox TTL cleanup, per-user `forward_as_prompt` / `voice_as_prompt` settings.
   See `specs/PHASE_4_INGEST.md`.
+- **Permissions, questions and plans (phase 5)** — the bridge is Claude Code's permission
+  prompt tool: a stdlib MCP server (`app/bridge/mcp_server.py`) forwards every request over a
+  unix socket to the daemon, which shows a card (`Bash` command, `Edit`/`Write` diff, masked
+  JSON for other tools) with `✅ ❌ 🔓 Всегда ✏️` buttons; «Всегда» writes an allow rule to the
+  project's `.claude/settings.local.json` via `updatedPermissions` and `/perm forget` removes
+  it; «Отклонить и объяснить» uses the next message as the reason; unanswered cards time out
+  into a deny; `AskUserQuestion` becomes cards with option buttons (multiSelect toggles,
+  custom answer); `ExitPlanMode` becomes a plan card with «Выполнять (правки без вопросов)» /
+  «спрашивать про правки» / «Доработать»; the live view shows `🔐 жду разрешения`. Settings:
+  `BRIDGE_SOCKET`, `PERMISSION_TIMEOUT_SECS`, `QUESTION_TIMEOUT_SECS`, `PERMISSION_DIFF_LINES`.
+  See `specs/PHASE_5_PERMISSIONS.md`.
 - **Test infrastructure** — `scripts/test.sh` with a disposable Postgres, recording Telegram
   session with failure injection, spy, update builders, fake `claude` for the coming phases.
   See `specs/E2E_TESTS.md`.

@@ -1,6 +1,6 @@
 # E2E_TESTS — тестовая инфраструктура и покрытие
 
-Status: фаза 4 — инфраструктура, команды, outbox, ходы, стриминг, кнопки, входной конвейер; обновляется каждой фазой.
+Status: фаза 5 — инфраструктура, команды, outbox, ходы, стриминг, кнопки, входной конвейер, разрешения/вопросы/планы; обновляется каждой фазой.
 
 ## Запуск
 
@@ -22,7 +22,7 @@ Status: фаза 4 — инфраструктура, команды, outbox, х�
 | Апдейты | `tests/support/updates.py` | `text_update(text, user_id, chat_id, chat_type, thread_id, is_topic, topic_name)`, `callback_update(data, message_id, …)`, `stopped_update(draft_id)`, `message_update(text|caption, photo_id, document=(id, name, size), voice_id, forward_from, forward_channel, media_group_id, reply_to)`, `edited_update(text, message_id)` — настоящие `aiogram.types.Update`. |
 | Прогон | `tests/support/helpers.py` | `feed(app, update)` → `dp.feed_update` (реальные middleware и хендлеры); `wait_outbox_idle(app)` — ждёт, пока все due-строки outbox доставлены/провалены; `run()` = оба; `wait_for_text(spy, fragment)` — ждёт появления текста; `wait_turn_finished(app)` — ждёт конца последнего хода и возвращает строку `turns`. |
 | Приложение | фикстура `app` | `App(Bot(session=RecordingSession()), db)` со стартом outbox-воркера; `stop()` в teardown. |
-| fake `claude` | `tests/fake_claude/claude`, фикстура `fake_claude` (autouse) в `tests/support/fake_claude.py` | Исполняемый скрипт stream-json (см. `PHASE_1_SKELETON.md`). Фикстура даёт каждому тесту свою очередь сценариев и лог, подменяет `CLAUDE_BIN`, `CLAUDE_ENV`, `WORK_ROOT`/`DEFAULT_CWD` (в `tmp_path/work`). Хелперы: `enqueue(*events)`, `text_turn(text, **result)`, `argv_calls()`, `cwds()`, `stdin_texts()`, `signals()`; билдеры событий `assistant_text`, `result`, `text_delta`, `thinking_delta`, `tool_use`, `tool_result`, `compact_boundary`, `permission_denied`. Шаги сценария `{"delay": s}` и `{"exit": code, "stderr": …}` моделируют долгий ход и падение. |
+| fake `claude` | `tests/fake_claude/claude`, фикстура `fake_claude` (autouse) в `tests/support/fake_claude.py` | Исполняемый скрипт stream-json (см. `PHASE_1_SKELETON.md`). Фикстура даёт каждому тесту свою очередь сценариев и лог, подменяет `CLAUDE_BIN`, `CLAUDE_ENV`, `WORK_ROOT`/`DEFAULT_CWD` (в `tmp_path/work`). Хелперы: `enqueue(*events)`, `text_turn(text, **result)`, `argv_calls()`, `cwds()`, `stdin_texts()`, `signals()`; билдеры событий `assistant_text`, `result`, `text_delta`, `thinking_delta`, `tool_use`, `tool_result`, `compact_boundary`, `permission_denied`. Шаги сценария `{"delay": s}` и `{"exit": code, "stderr": …}` моделируют долгий ход и падение; `prompt_tool(tool, input)` — fake реально запускает `app/bridge/mcp_server.py` из `--mcp-config` и блокируется до решения по сокету, решения читаются `decisions()`; `question(q(...))` строит вход `AskUserQuestion`. Сокет каждого теста — короткий путь из `tempfile` (`settings.BRIDGE_SOCKET`). |
 | Unit | `tests/unit/` | `conftest.py` переопределяет `db`/`clean_db` заглушками: БД не нужна. |
 
 ## Что покрывает каждый файл
@@ -39,11 +39,17 @@ Status: фаза 4 — инфраструктура, команды, outbox, х�
 | `e2e/test_streaming.py` | события → `LiveView` → drafts / сообщение-прогресс → outbox | draft с `<tg-thinking>`, следом, thinking и удержанным последним словом, `can_stop`; нативный Stop → `🛑` с кнопкой повтора; отвергнутый draft → сообщение-прогресс с `🛑`, удаление после ответа; группа: прогресс, правки, удаление после финала; кнопка `🛑` → отмена и тост; склейка короткого сегмента; 429 на draft не ломает ход; длинный ответ → файл |
 | `e2e/test_cards.py` | `/status` → карточка → callbacks → `actions` | кнопки карточки; `🛑` при идущем ходе; `🆕` перерисовывает карточку; `⏸`/`🔄`; `✖` удаляет; устаревшая кнопка → тост; `🔁` на вердикте; `🔓` → `acceptEdits` и новый argv; `▶️ Продолжить`; `/perm`; меню из 3 команд |
 | `e2e/test_ingest.py` | Update → `Batcher` → `Ingest.build_item` (скачивание, транскрипция) → staging или `assemble` → ход | альбом с подписью → один ход с двумя image block и файлами в inbox; текст+фото+голос за окно → один ход по `message_id`; форвард без вопроса → staging и 👀, затем ход с атрибуцией; форвард канала; `forward_as_prompt`; документ без/с подписью; транскрипция с эхом 🎤; `voice_as_prompt=off`; провал транскрипции → путь; правка → пометка и `✏️`; файл > лимита → предупреждение, вопрос идёт; `/new` чистит staging и карточка показывает `Staging`; `/files`; чистка inbox по TTL; reply-цитата берётся у якоря батча |
+| `e2e/test_permissions.py` | `claude` → MCP → сокет → `PromptService` → карточка → callback/текст → решение | карточка Bash и `✅` → allow с `updatedInput`, argv с prompt tool; `❌` → deny; `🔓 Всегда` → `updatedPermissions localSettings` + `topic_rules` + `/perm`; Edit-карточка с diff без «Всегда»; `✏️` → следующий текст = причина, ход не создан; таймаут → deny и `⌛`; повторное нажатие → тост; `/cancel` при ожидании → deny и `🛑`; `🔐 жду разрешения` в draft и `/status`; Write новый файл и MCP-инструмент с маскированием; `dontAsk` без prompt tool; `/perm forget` чистит файл и таблицу; рестарт помечает `stale` |
+| `e2e/test_questions.py` | `AskUserQuestion` → карточки | один вариант → `answers` и `→ label`; multiSelect тогглы и `Готово`; два вопроса подряд; `✍ Свой ответ` → текст; таймаут |
+| `e2e/test_plans.py` | `ExitPlanMode` → карточка плана | `✅ без вопросов` → `setMode acceptEdits` + режим темы; `спрашивать про правки` → `setMode default`; `✏️ Доработать` → deny с текстом |
 | `e2e/test_dedup.py` | `DedupMiddleware` | один `update_id` дважды → один ответ |
 | `e2e/test_lifecycle.py` | `App.start/stop` | `NOTIFY_CHAT` получает 🌅 и ⏹ (с `message_thread_id`) |
 | `unit/test_fake_claude.py` | скрипт fake `claude` | init с `--session-id`, воспроизведение сценария, лог; пустая очередь → exit 3 |
 | `unit/test_markdown_split.py` | `render/markdown.py` | разрезка по строкам, fence-aware разрез с переоткрытием языка, границы абзацев, таблица целиком, правила превью |
 | `unit/test_classify.py` | `ingest/classify.py`, `InboxService.unique_path` | матрица prompt/staging/skip, атрибуция форвардов, санитайзер имён, суффиксы коллизий |
+| `unit/test_rules.py` | `bridge/rules.py` | матрица «Всегда», форма `updatedPermissions`, `forget_rules` от cwd до корня |
+| `unit/test_cards.py` | `render/cards.py` | карточки Bash/Edit/Write/Read/Web/прочие, fence с backticks, обрезка diff, маскирование |
+| `unit/test_mcp_server.py` | `bridge/mcp_server.py` как процесс | initialize/tools/list/ping; нет сокета → deny без зависания; решение демона проксируется с токеном |
 | `unit/test_progress.py` | `render/progress.py` | детали инструментов и срезы, строка прогресса, след из трёх с подагентом, стабильная фраза, состояние ожидания, рендер draft/прогресса |
 
 ## Not yet covered
@@ -55,7 +61,8 @@ Status: фаза 4 — инфраструктура, команды, outbox, х�
 | Падение воркера outbox посреди доставки (демон убит между отправкой и `mark_delivered`) | Требует убийства процесса; поведение at-least-once описано в спеке | низкий |
 | Очистка `processed_updates` по возрасту | Нет периодической задачи в фазе 1 | низкий, фаза 9 |
 | Fallback `--resume` → `--session-id` при неудачном resume | Нужен fake-сценарий «выход до init»; ветка есть в `runtime._run_turn` | средний, фаза 6 |
-| Шаг `prompt_tool` fake `claude` | Используется с фазы 5 | фаза 5 |
 | Реакция 👾 на якорь при ошибке хода | Не реализована в фазе 4 (только 👀 на staging) | низкий, фаза 8 |
+| Обрыв MCP-клиента (claude умер) при висящей карточке → `🛑` | Ветка `watch` в `PromptService.handle`; fake гасится только SIGINT'ом, который уже резолвит запрос через `cancel()` | низкий |
+| Параллельные prompt-запросы (несколько tool-вызовов сразу) | MCP-сервер обрабатывает по одному; сценарий последователен | низкий |
 | Keepalive draft'а при долгом инструменте | Таймер есть (`DRAFT_KEEPALIVE`), тест на повторную отправку без изменений не написан | низкий |
 | Потеря сообщения-прогресса (удалено пользователем) → пересоздание | Ветка в `LiveView._send_latest` | низкий |
