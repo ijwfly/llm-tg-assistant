@@ -12,11 +12,11 @@ from app.transport import texts
 log = logging.getLogger(__name__)
 
 
-async def _refresh_after(app, topic: dict, cq: CallbackQuery) -> None:
+async def _refresh_after(app, topic: dict, cq: CallbackQuery, page: str = "main") -> None:
     """A card button changed the topic: redraw the card it lives on."""
     if cq.message is not None:
         topic = await app.store.topics.get_by_id(topic["id"]) or topic
-        await actions.refresh_card(app, topic, cq.message.message_id)
+        await actions.refresh_card(app, topic, cq.message.message_id, page=page, user_id=cq.from_user.id)
 
 
 PROMPT_ACTIONS = {"pa", "pd", "pw", "pc", "qo", "qd", "qc", "pl"}
@@ -80,7 +80,15 @@ async def on_callback(cq: CallbackQuery, app) -> None:
         elif action == "perm":
             toast = await actions.set_permission_mode(app, topic, arg or "")
         elif action == "refresh":
-            toast = await actions.refresh_card(app, topic, cq.message.message_id) if cq.message else texts.TOAST_STALE
+            toast = await actions.refresh_card(app, topic, cq.message.message_id, user_id=cq.from_user.id) if cq.message else texts.TOAST_STALE
+        elif action == "page":
+            toast = await actions.refresh_card(app, topic, cq.message.message_id, page=arg or "main", user_id=cq.from_user.id) if cq.message else texts.TOAST_STALE
+        elif action == "cyc":
+            toast = await actions.cycle_setting(app, topic, arg or "")
+            await _refresh_after(app, topic, cq)
+        elif action == "tgl":
+            toast = await actions.toggle_flag(app, topic, cq.from_user.id, arg or "")
+            await _refresh_after(app, topic, cq, page="more")
         elif action == "hide":
             toast = await actions.hide_card(app, topic, cq.message.message_id) if cq.message else texts.TOAST_STALE
         elif action == "del":

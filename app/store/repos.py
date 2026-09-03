@@ -129,11 +129,11 @@ class TurnsRepo:
 
     async def finish(self, turn_id: int, *, status: str, result_subtype: str | None = None,
                      duration_ms: int | None = None, num_turns: int | None = None, cost_usd: float | None = None,
-                     usage: dict | None = None, error: str | None = None) -> None:
+                     usage: dict | None = None, error: str | None = None, model: str | None = None) -> None:
         await self.db.execute(
             """UPDATE turns SET status = $2, result_subtype = $3, duration_ms = $4, num_turns = $5,
-                                cost_usd = $6, usage = $7, error = $8, finished_at = now()
-               WHERE id = $1""", turn_id, status, result_subtype, duration_ms, num_turns, cost_usd, usage, error)
+                                cost_usd = $6, usage = $7, error = $8, model = COALESCE($9, model), finished_at = now()
+               WHERE id = $1""", turn_id, status, result_subtype, duration_ms, num_turns, cost_usd, usage, error, model)
 
     async def get(self, turn_id: int) -> dict | None:
         return _row(await self.db.fetchrow("SELECT * FROM turns WHERE id = $1", turn_id))

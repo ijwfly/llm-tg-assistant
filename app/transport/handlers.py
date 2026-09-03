@@ -70,7 +70,36 @@ async def cmd_topics(message: Message, app) -> None:
 
 
 async def cmd_status(message: Message, app) -> None:
-    await actions.show_card(app, await _topic(app, message))
+    await actions.show_card(app, await _topic(app, message), user_id=message.from_user.id if message.from_user else None)
+
+
+async def cmd_model(message: Message, command: CommandObject, app) -> None:
+    topic = await _topic(app, message)
+    arg = (command.args or "").strip()
+    if not arg:
+        from app.core import prefs
+        await actions.send_to_topic(app, topic, texts.MODEL_INFO.format(
+            model=prefs.shown(topic.get("model")), choices=", ".join(settings.MODEL_CHOICES)))
+        return
+    await actions.set_model(app, topic, arg)
+
+
+async def cmd_effort(message: Message, command: CommandObject, app) -> None:
+    topic = await _topic(app, message)
+    arg = (command.args or "").strip()
+    if not arg:
+        from app.core import prefs
+        await actions.send_to_topic(app, topic, texts.EFFORT_INFO.format(effort=prefs.shown(topic.get("effort"))))
+        return
+    await actions.set_effort(app, topic, arg)
+
+
+async def cmd_soul(message: Message, command: CommandObject, app) -> None:
+    await actions.set_soul(app, await _topic(app, message), command.args or "")
+
+
+async def cmd_voice(message: Message, command: CommandObject, app) -> None:
+    await actions.set_voice(app, await _topic(app, message), command.args or "")
 
 
 async def cmd_new(message: Message, app) -> None:
@@ -236,6 +265,10 @@ def build_router() -> Router:
     router.message.register(cmd_project, Command("project"))
     router.message.register(cmd_rename, Command("rename"))
     router.message.register(cmd_delete, Command("delete"))
+    router.message.register(cmd_model, Command("model"))
+    router.message.register(cmd_effort, Command("effort"))
+    router.message.register(cmd_soul, Command("soul"))
+    router.message.register(cmd_voice, Command("voice"))
     router.message.register(any_message, CONTENT_FILTER)
     router.edited_message.register(edited_message, CONTENT_FILTER)
     router.stopped_message_generation.register(on_generation_stopped)

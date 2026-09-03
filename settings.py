@@ -31,6 +31,9 @@ DEFAULT_PERMISSION_MODE: str = os.environ.get("DEFAULT_PERMISSION_MODE", "prompt
 ALLOW_BYPASS: bool = False                                # allow /perm bypass (full shell from the phone)
 DEFAULT_MODEL: str | None = None
 DEFAULT_EFFORT: str | None = None
+MODEL_CHOICES: list[str] = ["sonnet", "opus", "haiku"]   # the «Модель» button cycles through these (+ default)
+SOUL_PATH: str | None = None                             # persona file appended to the system prompt (topics can override)
+BRIDGE_PREAMBLE_PATH: str | None = None                  # None -> bridge_preamble.md in the repository
 FALLBACK_MODEL: str | None = None
 MAX_BUDGET_USD_PER_TURN: float | None = None
 ALLOWED_TOOLS: list[str] = []                             # passed as --allowed-tools (permission rule syntax)
@@ -65,6 +68,11 @@ PREVIEW_TAIL: int = 600              # chars of text tail in the progress messag
 MIN_SEGMENT_CHARS: int = 120         # shorter text before a tool call is merged with the next segment
 ANSWER_FILE_THRESHOLD: int = 50_000  # longer answers go as a file
 INBOX_DIR: str = os.environ.get("INBOX_DIR", "/data/inbox")   # downloaded and generated files
+
+# --- Voice out ------------------------------------------------------------------
+TTS_CMD: str | None = None           # e.g. "say -o {wav} --data-format=LEI16@22050 -f {text_file} && ffmpeg -y -loglevel error -i {wav} -c:a libopus {out}"
+TTS_TIMEOUT: float = 120.0
+TTS_MAX_CHARS: int = 900             # prose read aloud per turn, cut at a sentence boundary
 
 # --- Ingest ----------------------------------------------------------------------
 BATCH_WINDOW_MS: int = 300           # sliding window: messages of a topic within it form one turn

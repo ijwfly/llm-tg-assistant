@@ -13,6 +13,7 @@ import settings
 from app.bridge import sessions
 from app.bridge.cli import PERMISSION_MODES
 from app.bridge.rules import forget_rules as _forget_in_files, local_allow_rules
+from app.core import prefs
 from app.core.runtime import QueueFull, TurnRequest
 from app.render.keyboards import confirm_delete_kb, sessions_kb, topic_card_kb
 from app.transport import texts
@@ -73,13 +74,110 @@ async def continue_turn(app, topic: dict) -> str:
     return await submit_turn(app, topic, TurnRequest(content=[{"type": "text", "text": "продолжай"}]))
 
 
-async def set_permission_mode(app, topic: dict, mode: str) -> str:
+async def set_permission_mode(app, topic: dict, mode: str, *, announce: bool = True) -> str:
     if mode not in PERMISSION_MODES or (mode == "bypass" and not settings.ALLOW_BYPASS):
         return texts.PERM_UNKNOWN.format(mode=mode)
     await app.store.topics.update(topic["id"], permission_mode=mode)
     await app.runtimes.get(topic).stop_process()   # the new mode applies on the next spawn, context kept
-    await send_to_topic(app, topic, texts.PERM_SET.format(mode=mode))
+    if announce:
+        await send_to_topic(app, topic, texts.PERM_SET.format(mode=mode))
     return texts.PERM_SET.format(mode=mode)
+
+
+async def set_model(app, topic: dict, model: str | None, *, announce: bool = True) -> str:
+    value = None if not model or model == prefs.DEFAULT else model
+    await app.store.topics.update(topic["id"], model=value)
+    await app.runtimes.get(topic).stop_process()
+    text = texts.MODEL_SET.format(model=prefs.shown(value))
+    if announce:
+        await send_to_topic(app, topic, text)
+    return text
+
+
+async def set_effort(app, topic: dict, effort: str | None, *, announce: bool = True) -> str:
+    value = None if not effort or effort == prefs.DEFAULT else effort
+    if value is not None and value not in prefs.EFFORTS:
+        text = texts.EFFORT_UNKNOWN.format(effort=effort)
+        if announce:
+            await send_to_topic(app, topic, text)
+        return text
+    await app.store.topics.update(topic["id"], effort=value)
+    await app.runtimes.get(topic).stop_process()
+    text = texts.EFFORT_SET.format(effort=prefs.shown(value))
+    if announce:
+        await send_to_topic(app, topic, text)
+    return text
+
+
+def _soul_allowed(path: Path) -> bool:
+    roots = [Path(settings.WORK_ROOT).resolve(), Path(os.path.expanduser("~/.config")).resolve()]
+    return any(path == r or r in path.parents for r in roots)
+
+
+async def set_soul(app, topic: dict, arg: str) -> str:
+    arg = arg.strip()
+    if not arg:
+        from app.bridge.cli import soul_file
+        current = soul_file(topic)
+        text = texts.SOUL_INFO.format(path=str(current) if current else ("выключен" if topic.get("soul_path") == "off" else "нет"))
+    elif arg == "off":
+        await app.store.topics.update(topic["id"], soul_path="off")
+        await app.runtimes.get(topic).stop_process()
+        text = texts.SOUL_OFF
+    elif arg == "default":
+        await app.store.topics.update(topic["id"], soul_path=None)
+        await app.runtimes.get(topic).stop_process()
+        text = texts.SOUL_DEFAULT.format(path=settings.SOUL_PATH or "не задан")
+    else:
+        path = Path(os.path.expanduser(arg)).resolve()
+        if not path.is_file() or not _soul_allowed(path):
+            text = texts.SOUL_NO_FILE.format(path=path, root=settings.WORK_ROOT)
+        else:
+            await app.store.topics.update(topic["id"], soul_path=str(path))
+            await app.runtimes.get(topic).stop_process()
+            text = texts.SOUL_SET.format(path=path)
+    await send_to_topic(app, topic, text)
+    return text
+
+
+async def set_voice(app, topic: dict, arg: str) -> str:
+    arg = arg.strip().lower()
+    if arg not in ("on", "off"):
+        text = texts.VOICE_INFO.format(state="вкл" if prefs.topic_flag(topic, "voice") else "выкл")
+    elif arg == "on" and not settings.TTS_CMD:
+        text = texts.TTS_NOT_CONFIGURED
+    else:
+        await app.store.topics.update_settings(topic["id"], voice=(arg == "on"))
+        text = texts.VOICE_ON if arg == "on" else texts.VOICE_OFF
+    await send_to_topic(app, topic, text)
+    return text
+
+
+async def cycle_setting(app, topic: dict, key: str) -> str:
+    """A card switch: next value in the cycle, process restarted, no chat message (the card redraws)."""
+    if key == "perm":
+        await set_permission_mode(app, topic, prefs.next_in(prefs.perm_cycle(), topic.get("permission_mode")), announce=False)
+    elif key == "model":
+        await set_model(app, topic, prefs.next_in(prefs.model_cycle(), topic.get("model")), announce=False)
+    elif key == "effort":
+        await set_effort(app, topic, prefs.next_in(prefs.effort_cycle(), topic.get("effort")), announce=False)
+    else:
+        return texts.TOAST_STALE
+    return texts.TOAST_SWITCHED
+
+
+async def toggle_flag(app, topic: dict, user_id: int | None, key: str) -> str:
+    if key in prefs.TOPIC_FLAGS:
+        if key == "voice" and not prefs.topic_flag(topic, key) and not settings.TTS_CMD:
+            await send_to_topic(app, topic, texts.TTS_NOT_CONFIGURED)
+            return texts.TTS_NOT_CONFIGURED
+        await app.store.topics.update_settings(topic["id"], **{key: not prefs.topic_flag(topic, key)})
+        return texts.TOAST_SWITCHED
+    if key in prefs.USER_FLAGS and user_id:
+        current = await app.store.users.settings(user_id)
+        await app.store.users.update_settings(user_id, **{key: not prefs.user_flag(current, key)})
+        return texts.TOAST_SWITCHED
+    return texts.TOAST_STALE
 
 
 async def perm_info(app, topic: dict) -> str:
@@ -99,13 +197,19 @@ async def forget_rules(app, topic: dict) -> str:
     return text
 
 
-async def topic_card(app, topic: dict) -> tuple[str, object]:
+async def topic_card(app, topic: dict, *, page: str = "main", user_id: int | None = None) -> tuple[str, object]:
     rt = app.runtimes.peek(topic["id"])
     state = rt.status() if rt else None
     running = bool(state and (state.get("turn") is not None or state.get("queued")))
     staging = await app.store.staging.count(topic["id"])
     title = sessions.session_title(str(topic["session_id"]) if topic["session_id"] else None, topic["cwd"])
-    return texts.status(topic, state, staging, title), topic_card_kb(topic["id"], running=running)
+    user_settings = await app.store.users.settings(user_id) if user_id else {}
+    flags = {k: prefs.topic_flag(topic, k) for k in prefs.TOPIC_FLAGS}
+    flags.update({k: prefs.user_flag(user_settings, k) for k in prefs.USER_FLAGS})
+    kb = topic_card_kb(topic["id"], running=running, perm=topic.get("permission_mode") or settings.DEFAULT_PERMISSION_MODE,
+                       model=prefs.shown(topic.get("model")), effort=prefs.shown(topic.get("effort")),
+                       flags=flags, labels=prefs.FLAG_LABELS, page=page)
+    return texts.status(topic, state, staging, title, app.runtimes.rate_limit), kb
 
 
 # ---------------------------------------------------------------- sessions (PROJECT_SPEC 4.2, 4.3.1)
@@ -350,13 +454,13 @@ async def rename_topic(app, topic: dict, name: str, *, tell_claude: bool = True)
     return texts.RENAMED.format(name=name)
 
 
-async def show_card(app, topic: dict) -> None:
-    text, kb = await topic_card(app, topic)
+async def show_card(app, topic: dict, user_id: int | None = None) -> None:
+    text, kb = await topic_card(app, topic, user_id=user_id)
     await send_to_topic(app, topic, text, reply_markup=kb, role="card")
 
 
-async def refresh_card(app, topic: dict, message_id: int) -> str:
-    text, kb = await topic_card(app, topic)
+async def refresh_card(app, topic: dict, message_id: int, *, page: str = "main", user_id: int | None = None) -> str:
+    text, kb = await topic_card(app, topic, page=page, user_id=user_id)
     await app.sender.edit_text(topic["chat_id"], topic["thread_id"], message_id, text, reply_markup=kb,
                                topic_id=topic["id"])
     return texts.TOAST_REFRESHED

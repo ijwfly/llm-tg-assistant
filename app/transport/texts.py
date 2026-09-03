@@ -79,6 +79,22 @@ RENAME_USAGE = "Как назвать? /rename <имя>."
 TOAST_BRANCHED = "Ветка открыта"
 TOAST_RESUMED = "Подключилась"
 
+MODEL_SET = "🤖 Модель: {model}. Процесс перезапустится на следующем ходе, контекст остаётся."
+MODEL_INFO = "Модель темы: {model}. /model <имя|default> — сменить; варианты: {choices}."
+EFFORT_SET = "🎚 Усилие: {effort}. Процесс перезапустится на следующем ходе, контекст остаётся."
+EFFORT_INFO = "Усилие темы: {effort}. /effort <low|medium|high|xhigh|max|default>."
+EFFORT_UNKNOWN = "Не знаю усилие {effort}. Варианты: low, medium, high, xhigh, max, default."
+SOUL_SET = "🎭 Характер: {path}. Вступит в силу со следующего процесса."
+SOUL_OFF = "🎭 Характер выключен для этой темы."
+SOUL_DEFAULT = "🎭 Характер: из конфига ({path})."
+SOUL_INFO = "Характер темы: {path}. /soul <путь|off|default>."
+SOUL_NO_FILE = "⚠️ Нет такого файла: {path}. Путь должен быть внутри {root} или ~/.config."
+VOICE_ON = "🔊 Голосом: после текста придёт голосовое."
+VOICE_OFF = "🔇 Только текст."
+VOICE_INFO = "Голосовые ответы: {state}. /voice on|off."
+TTS_NOT_CONFIGURED = "Синтез не настроен: задай TTS_CMD в settings_local.py."
+TOAST_SWITCHED = "Переключено"
+
 PERM_SET = "🔐 Права: {mode}. Процесс перезапустится на следующем ходе, контекст остаётся."
 PERM_FORGOT = "Забыла {n} правил. Снова буду спрашивать."
 PERM_NOTHING_TO_FORGET = "В этой теме я правил не добавляла."
@@ -184,7 +200,19 @@ def files_list(rows: list[dict]) -> str:
     return "Последние файлы темы:\n" + "\n".join(f"{r['kind']}: {r['path']}" for r in rows)
 
 
-def status(topic: dict, rt: dict | None, staging: int = 0, session_title: str | None = None) -> str:
+def limits_line(info: dict | None) -> str | None:
+    windows = (info or {}).get("unifiedWindows") or {}
+    names = {"five_hour": "5 ч", "seven_day": "7 дн"}
+    parts = []
+    for key, label in names.items():
+        w = windows.get(key) or {}
+        if w.get("utilization") is not None:
+            parts.append(f"{label}: {round(float(w['utilization']) * 100)}%")
+    return " · ".join(parts) if parts else None
+
+
+def status(topic: dict, rt: dict | None, staging: int = 0, session_title: str | None = None,
+           rate_limit: dict | None = None) -> str:
     thread = topic["thread_id"] if topic["thread_id"] is not None else "—"
     rt = rt or {}
     proc = rt.get("process")
@@ -205,6 +233,9 @@ def status(topic: dict, rt: dict | None, staging: int = 0, session_title: str | 
     last = rt.get("last")
     if last:
         lines.append("Последний    " + turn_stats(last.get("duration_ms"), last.get("cost_usd"), last.get("num_turns")).strip("_"))
+    limits = limits_line(rate_limit)
+    if limits:
+        lines.append(f"Лимиты       {limits}")
     return "\n".join(lines)
 
 

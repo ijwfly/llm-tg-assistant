@@ -9,6 +9,7 @@ from pathlib import Path
 import settings
 
 MCP_SERVER = Path(__file__).resolve().parent / "mcp_server.py"
+PREAMBLE = Path(__file__).resolve().parents[2] / "bridge_preamble.md"
 PROMPT_TOOL = "mcp__tgbridge__approve"
 PROMPT_MODES = {"prompt", "acceptEdits", "plan", "auto"}   # bridge modes that route questions to Telegram
 
@@ -45,6 +46,36 @@ def mcp_config(token: str) -> str:
                 "TGBRIDGE_TIMEOUT": str(int(timeout))}}}})
 
 
+def soul_file(topic: dict) -> Path | None:
+    """The persona file for a topic: its own path, or SOUL_PATH unless the topic said `off`."""
+    raw = topic.get("soul_path")
+    if raw == "off":
+        return None
+    candidate = raw or settings.SOUL_PATH
+    if not candidate:
+        return None
+    path = Path(os.path.expanduser(candidate))
+    return path if path.is_file() else None
+
+
+def system_prompt_file(topic: dict) -> str | None:
+    """Preamble + persona glued into one file per topic (one --append-system-prompt-file)."""
+    parts = []
+    preamble = Path(os.path.expanduser(settings.BRIDGE_PREAMBLE_PATH)) if settings.BRIDGE_PREAMBLE_PATH else PREAMBLE
+    if preamble.is_file():
+        parts.append(preamble.read_text())
+    soul = soul_file(topic)
+    if soul is not None:
+        parts.append(soul.read_text())
+    if not parts:
+        return None
+    out_dir = Path(settings.INBOX_DIR) / "system"
+    out_dir.mkdir(parents=True, exist_ok=True)
+    path = out_dir / f"topic-{topic['id']}.md"
+    path.write_text("\n\n".join(p.strip() for p in parts) + "\n")
+    return str(path)
+
+
 def uses_prompt_tool(topic: dict) -> bool:
     return (topic.get("permission_mode") or settings.DEFAULT_PERMISSION_MODE) in PROMPT_MODES
 
@@ -66,10 +97,13 @@ def build_argv(topic: dict, *, resume: bool, prompt_token: str | None = None) ->
                 argv += ["--name", fork["name"]]
     else:
         argv += ["--session-id", str(topic["session_id"])]
-    if topic.get("model"):
+    if topic.get("model") and topic["model"] != "default":
         argv += ["--model", topic["model"]]
-    if topic.get("effort"):
+    if topic.get("effort") and topic["effort"] != "default":
         argv += ["--effort", topic["effort"]]
+    system_prompt = system_prompt_file(topic)
+    if system_prompt:
+        argv += ["--append-system-prompt-file", system_prompt]
     if settings.FALLBACK_MODEL:
         argv += ["--fallback-model", settings.FALLBACK_MODEL]
     if settings.MAX_BUDGET_USD_PER_TURN:

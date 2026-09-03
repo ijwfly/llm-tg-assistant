@@ -40,12 +40,27 @@ def continue_kb(topic_id: int) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=[[_btn("Продолжить", cb("continue", topic_id))]])
 
 
-def topic_card_kb(topic_id: int, *, running: bool) -> InlineKeyboardMarkup:
+def _onoff(value: bool) -> str:
+    return "вкл" if value else "выкл"
+
+
+def topic_card_kb(topic_id: int, *, running: bool, perm: str, model: str, effort: str,
+                  flags: dict[str, bool], labels: dict[str, str], page: str = "main") -> InlineKeyboardMarkup:
+    """The topic card keyboard. `flags`/`labels`: switch key -> value / caption (PROJECT_SPEC 4.9)."""
+    if page == "more":
+        keys = list(flags)
+        rows = [[_btn(f"{labels[k]}: {_onoff(flags[k])}", cb("tgl", topic_id, k)) for k in keys[i:i + 2]]
+                for i in range(0, len(keys), 2)]
+        rows.append([_btn("Назад", cb("page", topic_id, "main"))])
+        return InlineKeyboardMarkup(inline_keyboard=rows)
     rows = []
     if running:
         rows.append([_btn("Прервать", cb("cancel", topic_id))])
     rows.append([_btn("Новый контекст", cb("new", topic_id)), _btn("Стоп процесса", cb("stop", topic_id))])
-    rows.append([_btn("Сессии", cb("sessions", topic_id)), _btn("Ветка", cb("branch", topic_id))])
+    rows.append([_btn(f"Права: {perm}", cb("cyc", topic_id, "perm")), _btn(f"Модель: {model}", cb("cyc", topic_id, "model")),
+                 _btn(f"Усилие: {effort}", cb("cyc", topic_id, "effort"))])
+    rows.append([_btn("Сессии", cb("sessions", topic_id)), _btn("Ветка", cb("branch", topic_id)),
+                 _btn("Ещё", cb("page", topic_id, "more"))])
     rows.append([_btn("Обновить", cb("refresh", topic_id)), _btn("Скрыть", cb("hide", topic_id)),
                  _btn("Удалить тему", cb("del", topic_id))])
     return InlineKeyboardMarkup(inline_keyboard=rows)

@@ -13,6 +13,7 @@ import settings
 from app.bridge import events as ev
 from app.bridge.cli import build_argv, child_env
 from app.bridge.process import ClaudeProcess
+from app.core import prefs
 from app.core.liveview import LiveView
 from app.render import keyboards
 from app.render.markdown import RICH_LIMIT
@@ -48,6 +49,9 @@ class TurnState:
     stream_buf: str = ""                # text deltas of the block being generated
     progress: ProgressState = field(default_factory=lambda: ProgressState(started=time.monotonic()))
     live: LiveView | None = None
+    topic: dict = field(default_factory=dict)
+    model: str | None = None            # from system/init
+    spoken: list[str] = field(default_factory=list)   # text segments sent, for the voice answer
 
     @property
     def preview_text(self) -> str:
@@ -200,12 +204,13 @@ class TopicRuntime:
     def _make_live(self, state: TurnState) -> LiveView:
         def render_draft() -> str:
             return draft_markdown(state.progress.line(time.monotonic()), state.progress.last_thinking_line(),
-                                  state.preview_text, show_thinking=settings.THINKING_PREVIEW, frozen_limit=RICH_LIMIT,
-                                  streaming=bool(state.stream_buf))
+                                  state.preview_text, show_thinking=prefs.topic_flag(state.topic, "thinking_preview"),
+                                  frozen_limit=RICH_LIMIT, streaming=bool(state.stream_buf))
 
         def render_message() -> str:
             return progress_text(state.progress.line(time.monotonic()), state.preview_text,
-                                 preview_chars=settings.PREVIEW_TAIL, show_preview=settings.STREAM_PREVIEW)
+                                 preview_chars=settings.PREVIEW_TAIL,
+                                 show_preview=prefs.topic_flag(state.topic, "stream_preview"))
 
         return LiveView(self.app, chat_id=self.chat_id, thread_id=self.thread_id, topic_id=self.topic_id,
                         turn_id=state.turn_id, private=self.private,
@@ -217,7 +222,7 @@ class TopicRuntime:
             self._idle_task.cancel()
         turn_id = request.turn_id or (await store.turns.create(self.topic_id, request.content))["id"]
         await store.turns.set_running(turn_id)
-        state = TurnState(turn_id=turn_id, request=request)
+        state = TurnState(turn_id=turn_id, request=request, topic=await store.topics.get_by_id(self.topic_id) or {})
         state.live = self._make_live(state)
         self.current = state
         typing = asyncio.create_task(self._typing(), name=f"typing-{turn_id}")
@@ -272,6 +277,7 @@ class TopicRuntime:
         for e in ev.parse_event(raw):
             if isinstance(e, ev.Init):
                 state.got_init = True
+                state.model = e.model
                 if e.session_id and str(e.session_id) != str(topic["session_id"]):
                     log.info("topic %s: session id changed %s -> %s", self.topic_id, topic["session_id"], e.session_id)
                     await self.app.store.topics.update(self.topic_id, session_id=uuid.UUID(e.session_id))
@@ -297,6 +303,8 @@ class TopicRuntime:
                 state.live.touch()
             elif isinstance(e, ev.PermissionDenied):
                 state.denials.append(e.tool_name)
+            elif isinstance(e, ev.RateLimit):
+                self.app.runtimes.rate_limit = e.info
             elif isinstance(e, ev.CompactBoundary):
                 state.compacted = True
                 state.compact_pre_tokens = e.pre_tokens
@@ -311,6 +319,7 @@ class TopicRuntime:
         if not text.strip():
             return
         state.texts_sent += 1
+        state.spoken.append(text)
         sender = self.app.sender
         if len(text) > settings.ANSWER_FILE_THRESHOLD:
             out_dir = Path(settings.INBOX_DIR) / "out"
@@ -353,7 +362,7 @@ class TopicRuntime:
         status = "error" if r.is_error else "done"
         await store.turns.finish(state.turn_id, status=status, result_subtype=r.subtype, duration_ms=r.duration_ms,
                                  num_turns=r.num_turns, cost_usd=r.total_cost_usd, usage=r.usage,
-                                 error=(r.result if r.is_error else None))
+                                 error=(r.result if r.is_error else None), model=state.model)
         self.last_turn = {"duration_ms": r.duration_ms, "cost_usd": r.total_cost_usd, "num_turns": r.num_turns,
                           "usage": r.usage}
         if r.subtype in ("error_max_turns", "error_max_budget_usd"):
@@ -369,7 +378,7 @@ class TopicRuntime:
             await self._rename_implicit_topic(state)
         if state.denials:
             await send(texts.DENIED.format(tools=", ".join(dict.fromkeys(state.denials))), keyboards.denied_kb(tid))
-        if settings.SHOW_TURN_STATS:
+        if prefs.topic_flag(state.topic, "show_turn_stats"):
             await send(texts.turn_stats(r.duration_ms, r.total_cost_usd, r.num_turns))
 
     async def _rename_implicit_topic(self, state: TurnState) -> None:
@@ -405,6 +414,7 @@ class RuntimeRegistry:
     def __init__(self, app):
         self.app = app
         self._by_topic: dict[int, TopicRuntime] = {}
+        self.rate_limit: dict | None = None   # last rate_limit_event of any topic (subscription windows)
 
     def get(self, topic: dict) -> TopicRuntime:
         rt = self._by_topic.get(topic["id"])
