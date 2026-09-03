@@ -27,7 +27,7 @@ NEW_PROJECTS_DIR: str | None = None                       # /project new <name> 
 # --- Claude Code ----------------------------------------------------------------
 CLAUDE_BIN: str = os.environ.get("CLAUDE_BIN", "claude")
 CLAUDE_CONFIG_DIR: str | None = os.environ.get("CLAUDE_CONFIG_DIR") or None
-DEFAULT_PERMISSION_MODE: str = os.environ.get("DEFAULT_PERMISSION_MODE", "prompt")
+DEFAULT_PERMISSION_MODE: str = os.environ.get("DEFAULT_PERMISSION_MODE", "auto")   # auto: the CLI classifier decides, disputed calls come as cards; prompt: a card for every action
 ALLOW_BYPASS: bool = False                                # allow /perm bypass (full shell from the phone)
 DEFAULT_MODEL: str | None = None
 DEFAULT_EFFORT: str | None = None

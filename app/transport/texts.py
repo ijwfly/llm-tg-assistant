@@ -1,4 +1,5 @@
 """All user-facing strings of the bot live here (Russian)."""
+import settings
 from app.render.markdown import format_duration
 
 def help(user_id: int, chat_id: int, thread_id: int | None) -> str:
@@ -152,7 +153,7 @@ TOAST_FAILED = "Не получилось, смотри лог"
 
 def perm_info(mode: str | None, topic_rules: list[str] = (), local_rules: list[str] = ()) -> str:
     modes = ["prompt", "acceptEdits", "plan", "auto", "dontAsk", "bypass"]
-    rows = [f"{'← ' if m == (mode or 'prompt') else '   '}{m}" for m in modes]
+    rows = [f"{'← ' if m == (mode or settings.DEFAULT_PERMISSION_MODE) else '   '}{m}" for m in modes]
     text = "Права темы:\n" + "\n".join(rows) + "\n\n/perm <режим> — сменить; /perm default — из конфига."
     if topic_rules:
         text += "\n\nРазрешила по кнопке «Всегда»:\n" + "\n".join(f"• {r}" for r in topic_rules)

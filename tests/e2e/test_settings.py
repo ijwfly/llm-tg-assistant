@@ -138,3 +138,20 @@ async def test_soul_default_comes_from_settings(app, spy, fake_claude, tmp_path)
     assert text.rstrip().endswith("Кратко и по делу.")
     await run(app, text_update("/soul"))
     assert spy.last_text() == f"Характер темы: {soul}. /soul <путь|off|default>."
+
+
+async def test_new_topics_start_in_the_configured_default_mode(app, spy, fake_claude):
+    from app.transport import texts
+    settings.DEFAULT_PERMISSION_MODE = "auto"
+    try:
+        await run(app, text_update("/status", thread_id=5, topic_name="Новая"))
+        assert (await app.topics.list_all())[0]["permission_mode"] == "auto"
+        assert labels(spy.calls("SendMessage")[-1])[2] == "Права: auto"
+        fake_claude.text_turn(LONG)
+        await feed(app, text_update("вопрос", thread_id=5, topic_name="Новая"))
+        await wait_turn_finished(app)
+        argv = fake_claude.argv_calls()[-1]
+        assert argv_value(argv, "--permission-mode") == "auto" and "--permission-prompt-tool" in argv   # cards still possible
+        assert texts.perm_info(None).splitlines()[4] == "← auto"                                        # unset topic → default
+    finally:
+        settings.DEFAULT_PERMISSION_MODE = "prompt"

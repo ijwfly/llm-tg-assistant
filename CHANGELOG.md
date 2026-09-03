@@ -7,6 +7,10 @@ All notable changes to this project are documented here. The format follows
 
 ### Changed
 
+- **Default permission mode is `auto`.** New topics start with Claude Code's own classifier
+  (`--permission-mode auto`, prompt tool still attached for disputed calls) instead of `prompt`, which
+  shows a card for every action. Existing topics keep the mode stored in their row; the card's «Права»
+  button switches it. See `specs/PROJECT_SPEC.md` §4.6.
 - **Topics are named after their folder.** A topic the user created without a name is renamed to its
   folder at the first message (before: to the first prompt after the first turn); «Новая тема» from the
   sessions card, `/project <path>` and `/project new` name the topic after the folder too. Until `/rename`
