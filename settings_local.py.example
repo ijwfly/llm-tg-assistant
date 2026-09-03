@@ -21,6 +21,14 @@
 # ALLOW_BYPASS = False
 # DEFAULT_MODEL = None                   # e.g. "sonnet"
 # DEFAULT_EFFORT = None                  # low | medium | high | xhigh | max
+# MODEL_CHOICES = ["sonnet", "opus", "haiku"]   # the «Модель» button on the topic card cycles through these
+# SOUL_PATH = "/home/app/.config/llm-tg-assistant/SOUL.md"   # persona appended to the system prompt; /soul overrides per topic
+# BRIDGE_PREAMBLE_PATH = None            # None -> bridge_preamble.md from the repository
+
+# --- Voice ------------------------------------------------------------------------
+# TRANSCRIBE_CMD = "opusdec --quiet --rate 16000 --force-wav {file} {wav} && whisper-cli -m model.bin -f {wav} -nt"
+# TTS_CMD = "say -o {wav} --data-format=LEI16@22050 -f {text_file} && ffmpeg -y -loglevel error -i {wav} -c:a libopus {out}"  # macOS example
+# TTS_TIMEOUT = 120
 
 # --- Permissions ------------------------------------------------------------------
 # BRIDGE_SOCKET = "/tmp/tgbridge.sock"   # unix socket between the claude prompt tool and the bot

@@ -68,6 +68,14 @@ All notable changes to this project are documented here. The format follows
   buttons are labelled with words instead of emoji; «Удалить тему» on the topic card and `/delete`
   (with confirmation) remove a topic through the bot — Telegram lets only the bot delete topics it
   created in private chats. See `specs/PHASE_6B_SESSION_DISCOVERY.md`.
+- **Settings, persona, voice, usage (phase 7)** — the topic card is the control panel: «Права /
+  Модель / Усилие» cycle in place (process restarted, context kept) and «Ещё» opens toggles for
+  answer preview, thinking line, turn stats, voice answers (topic) and voice/forward-as-question,
+  reactions (user); `/model`, `/effort`, `/soul <path|off|default>` (persona glued with
+  `bridge_preamble.md` into the system prompt), `/voice on|off` (one voice note per turn from the
+  answer's prose via `TTS_CMD`), `/usage` (month by topic and model), «Лимиты» line on `/status`
+  from `rate_limit_event`. New settings: `MODEL_CHOICES`, `SOUL_PATH`, `BRIDGE_PREAMBLE_PATH`,
+  `TTS_CMD`, `TTS_TIMEOUT`, `TTS_MAX_CHARS`. See `specs/PHASE_7_SETTINGS.md`.
 - **Test infrastructure** — `scripts/test.sh` with a disposable Postgres, recording Telegram
   session with failure injection, spy, update builders, fake `claude` for the coming phases.
   See `specs/E2E_TESTS.md`.

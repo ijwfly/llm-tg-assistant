@@ -16,7 +16,7 @@ token and `ALLOWED_USERS`, then `docker compose up -d --build`. Locally: `.venv/
 
 | Path | Concern |
 |---|---|
-| `settings.py` / `settings_local.py` | defaults (env-var backed) / secrets and overrides, gitignored |
+| `settings.py` / `settings_local.py` | defaults (env-var backed) / secrets and overrides, gitignored; display flags (`STREAM_PREVIEW`…) are only defaults — `core/prefs.py` reads the per-topic/per-user value |
 | `app/main.py` | entry point: validate settings, connect DB, migrate, polling |
 | `app/app.py` | `App`: wires store, sender, outbox worker, topics, dispatcher; start/stop notices |
 | `app/store/db.py`, `repos.py`, `migrations/` | asyncpg pool, idempotent `NNNN_*.sql` migrations (applied by the DB container init **and** at app start), repositories |
@@ -31,9 +31,11 @@ token and `ALLOWED_USERS`, then `docker compose up -d --build`. Locally: `.venv/
 | `app/bridge/sessions.py` | read-only index of Claude Code transcripts (`projects/<sanitized cwd>/<id>.jsonl`): titles, machine-wide listing inside `WORK_ROOT`, lookup by id/prefix/name |
 | `app/bridge/mcp_server.py`, `socket_server.py`, `rules.py` | stdlib-only stdio MCP server (`approve`) launched by `claude`, forwards to the daemon's unix socket (`BRIDGE_SOCKET`); `BridgeSocket` server; «Всегда» rule matrix, `updatedPermissions`, forgetting rules in `.claude/settings.local.json` |
 | `app/core/prompts.py` | `PromptService`: pending permission/question/plan prompts, cards, buttons, awaited text, timeouts, abandon on cancel; token → runtime registry |
-| `app/render/markdown.py`, `progress.py`, `keyboards.py`, `cards.py` | fence-aware splitter and preview rules; progress line, tool trail, draft/progress content; inline keyboards and `callback_data` codec; permission (diff/masking), question and plan cards |
+| `app/render/markdown.py`, `progress.py`, `keyboards.py`, `cards.py`, `tts.py` | fence-aware splitter and preview rules; progress line, tool trail, draft/progress content; inline keyboards and `callback_data` codec (topic card with switches and the «Ещё» page); permission (diff/masking), question and plan cards; prose extraction for TTS |
+| `bridge_preamble.md` | system-prompt preamble (Telegram context); glued with the persona (`SOUL_PATH` / `/soul`) into one `--append-system-prompt-file` per topic by `bridge/cli.py` |
+| `app/core/prefs.py`, `voice.py` | per-topic / per-user switches with defaults from `settings` (cycles for perm/model/effort); voice answer via `TTS_CMD` after the turn |
 | `app/core/liveview.py` | `LiveView`: draft (private) or progress message (groups), trailing-edge gate, 429, keepalive, delete after finals |
-| `app/core/actions.py` | topic actions shared by commands and buttons (new, stop, cancel, retry, continue, perm, perm forget, card, sessions, topic from session, resume, branch, project, project new, rename, delete topic with confirmation) |
+| `app/core/actions.py` | topic actions shared by commands and buttons (new, stop, cancel, retry, continue, perm, model, effort, soul, voice, card switches and flag toggles, usage, sessions, topic from session, resume, branch, project, project new, rename, delete topic with confirmation) |
 | `app/transport/callbacks.py` | inline-button dispatcher → `actions`; stale buttons answer a toast |
 | `app/ingest/batcher.py`, `classify.py`, `pipeline.py`, `files.py`, `transcribe.py` | sliding-window batcher per topic; prompt/staging matrix, forward attribution, file-name sanitizing; turn assembly (downloads, image blocks, staging consumption, reply quote); inbox with TTL cleanup; external STT command |
 | `spikes/` | phase-0 experiment scripts against the real `claude` (documentation, not product code) |
