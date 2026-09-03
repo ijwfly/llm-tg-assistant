@@ -252,13 +252,13 @@ async def sessions_card(app, topic: dict, page: int = 0, message_id: int | None 
     for s in found:
         same = Path(s.cwd or "").resolve() == topic_dir
         rows.append((_folder_label(s.cwd, root), s.short, sessions.ago(s.mtime), s.title, await _where(app, topic, s.session_id)))
-        entries.append((s.session_id, same))
+        entries.append((s.session_id, same, folder_name(s.cwd or "?"), s.title))
     text = texts.sessions_card(root, rows, outside, page, pages)
     kb = sessions_kb(topic["id"], entries, page, pages) if entries else None
     if message_id is not None:
-        await app.sender.edit_text(topic["chat_id"], topic["thread_id"], message_id, text, reply_markup=kb, topic_id=topic["id"])
+        await app.sender.edit_markdown(topic["chat_id"], topic["thread_id"], message_id, text, reply_markup=kb, topic_id=topic["id"])
     else:
-        await send_to_topic(app, topic, text, reply_markup=kb, role="card")
+        await app.sender.send_markdown(topic["chat_id"], topic["thread_id"], text, reply_markup=kb, topic_id=topic["id"], role="card")
     return text
 
 

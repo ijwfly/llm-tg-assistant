@@ -11,6 +11,10 @@ TERM = "aaaaaaaa-1111-4111-8111-111111111111"
 OTHER = "bbbbbbbb-2222-4222-8222-222222222222"
 
 
+def card_text(payload):
+    return payload.get("text") or payload["rich_message"]["markdown"]
+
+
 def buttons(payload):
     return [b["callback_data"] for row in payload["reply_markup"]["inline_keyboard"] for b in row]
 
@@ -33,16 +37,28 @@ async def test_sessions_card_lists_the_whole_machine_own_folder_first(app, spy, 
     write_transcript(settings.CLAUDE_CONFIG_DIR, str(other), OTHER, ["в другом проекте"], mtime=now - 30)
     write_transcript(settings.CLAUDE_CONFIG_DIR, str(outside), "dddddddd-4444-4444-8444-444444444444", ["вне корня"], mtime=now)
     await run(app, callback_update("sessions:1"))
-    card = spy.calls("SendMessage")[-1]
-    lines = card["text"].splitlines()
-    assert lines[0] == f"Сессии Claude Code в {settings.WORK_ROOT}:"
-    assert lines[1] == f"▸ . · {str(topic['session_id'])[:8]} · 5 мин назад · «мой вопрос из темы» · эта тема"
-    assert lines[2] == "▸ . · aaaaaaaa · 10 мин назад · «Починить auth»"
-    assert lines[3] == "▸ other · bbbbbbbb · только что · «в другом проекте»"
-    assert lines[4] == f"ещё 1 вне {settings.WORK_ROOT} — бот туда не ходит"
+    card = spy.calls("SendRichMessage")[-1]                      # markdown: bold folders, code root
+    lines = card_text(card).splitlines()
+    assert lines[0] == f"Сессии Claude Code в `{settings.WORK_ROOT}`:"
+    assert lines[1] == f"▸ **.** · {str(topic['session_id'])[:8]} · 5 мин назад · «мой вопрос из темы» · эта тема"
+    assert lines[2] == "▸ **.** · aaaaaaaa · 10 мин назад · «Починить auth»"
+    assert lines[3] == "▸ **other** · bbbbbbbb · только что · «в другом проекте»"
+    assert lines[4] == f"ещё 1 вне `{settings.WORK_ROOT}` — бот туда не ходит"
     assert buttons(card) == [f"rs:1:{str(topic['session_id'])[:8]}", "rs:1:aaaaaaaa", "ns:1:bbbbbbbb", "hide:1"]
-    assert button_texts(card) == [f"Продолжить здесь {str(topic['session_id'])[:8]}", "Продолжить здесь aaaaaaaa",
-                                  "Новая тема bbbbbbbb", "Скрыть"]
+    assert button_texts(card) == ["Продолжить здесь · мой вопрос из темы", "Продолжить здесь · Починить auth",
+                                  "Новая тема · other · в другом проекте", "Скрыть"]
+
+
+async def test_sessions_card_escapes_markdown_in_titles_and_cuts_long_labels(app, spy, fake_claude, tmp_path):
+    await run(app, text_update("/status"))
+    other = tmp_path / "work" / "my_lib"
+    other.mkdir()
+    write_transcript(settings.CLAUDE_CONFIG_DIR, str(other), OTHER, ["x"], custom_title="fix *bold* and `code` " + "z" * 40)
+    await run(app, callback_update("sessions:1"))
+    card = spy.calls("SendRichMessage")[-1]
+    assert "▸ **my\\_lib** · bbbbbbbb · только что · «fix \\*bold\\* and \\`code\\` zzz" in card_text(card)
+    label = button_texts(card)[0]
+    assert label.startswith("Новая тема · my_lib · fix *bold* and `code` zz") and label.endswith("…") and len(label) == 48
 
 
 async def test_sessions_card_pages_through_the_machine(app, spy, fake_claude, tmp_path):
@@ -56,20 +72,20 @@ async def test_sessions_card_pages_through_the_machine(app, spy, fake_claude, tm
         write_transcript(settings.CLAUDE_CONFIG_DIR, str(other), f"{i:02d}aaaaaa-1111-4111-8111-111111111111",
                          [f"задача {i}"], mtime=now - i * 60)
     await run(app, callback_update("sessions:1"))
-    card = spy.calls("SendMessage")[-1]
-    lines = card["text"].splitlines()
-    assert lines[0] == f"Сессии Claude Code в {settings.WORK_ROOT} · стр. 1/2:"
+    card = spy.calls("SendRichMessage")[-1]
+    lines = card_text(card).splitlines()
+    assert lines[0] == f"Сессии Claude Code в `{settings.WORK_ROOT}` · стр. 1/2:"
     assert len(lines) == size + 1 and "«задача 0»" in lines[1] and f"«задача {size - 1}»" in lines[-1]
     assert buttons(card)[-2:] == ["sp:1:1", "hide:1"] and button_texts(card)[-2] == "Дальше"
     await run(app, callback_update("sp:1:1", message_id=777))
     edit = spy.calls("EditMessageText")[-1]
     assert edit["message_id"] == 777
-    lines = edit["text"].splitlines()
-    assert lines[0] == f"Сессии Claude Code в {settings.WORK_ROOT} · стр. 2/2:"
+    lines = card_text(edit).splitlines()
+    assert lines[0] == f"Сессии Claude Code в `{settings.WORK_ROOT}` · стр. 2/2:"
     assert [l.split("«")[1] for l in lines[1:]] == [f"задача {size}»", f"задача {size + 1}»"]
     assert buttons(edit)[-2:] == ["sp:1:0", "hide:1"] and button_texts(edit)[-2] == "Назад"
     await run(app, callback_update("sp:1:0", message_id=777))
-    assert spy.calls("EditMessageText")[-1]["text"].splitlines()[0].endswith("стр. 1/2:")
+    assert card_text(spy.calls("EditMessageText")[-1]).splitlines()[0].endswith("стр. 1/2:")
 
 
 async def test_new_topic_button_creates_a_topic_bound_to_the_sessions_folder(app, spy, fake_claude, tmp_path):
@@ -99,13 +115,13 @@ async def test_past_session_of_the_topic_is_labelled(app, spy, fake_claude):
     await run(app, text_update("/new"))
     assert (await app.topics.list_all())[0]["settings"]["past_sessions"] == [old]
     await run(app, callback_update("sessions:1"))
-    assert f"▸ . · {old[:8]} · только что · «первая жизнь темы» · эта тема, раньше" in spy.last_text()
+    assert f"▸ **.** · {old[:8]} · только что · «первая жизнь темы» · эта тема, раньше" in spy.last_text()
 
 
 async def test_sessions_card_when_empty(app, spy, fake_claude):
     await run(app, text_update("/status"))
     await run(app, callback_update("sessions:1"))
-    assert spy.last_text() == f"Внутри {settings.WORK_ROOT} сессий Claude Code пока нет."
+    assert spy.last_text() == f"Внутри `{settings.WORK_ROOT}` сессий Claude Code пока нет."
 
 
 async def test_resume_by_prefix_switches_the_topic_and_resumes_on_the_next_turn(app, spy, fake_claude):

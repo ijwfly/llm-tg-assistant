@@ -28,7 +28,7 @@ Human-facing setup and operations: `README.md`.
 | `app/transport/middleware.py` | `AccessMiddleware` (ALLOWED_USERS/ALLOWED_CHATS, silent), `DedupMiddleware` (update_id, marked before handling) |
 | `app/transport/handlers.py` | commands and messages; `build_router()` per dispatcher; `topic_ref()` maps a message to `(chat_id, thread_id)` |
 | `app/transport/sender.py`, `outbox.py` | the only door for outgoing calls: rows in `outbox`, worker delivers per-topic in order, parallel across topics, 429/backoff/failed |
-| `app/transport/texts.py` | every user-facing string (Russian) |
+| `app/transport/texts.py` | every user-facing string (Russian); `md_escape` for user text inside markdown cards |
 | `app/core/topics.py` | `TopicRef`, `TopicService` |
 | `app/core/runtime.py` | `TopicRuntime` (queue, worker task, claude process, idle timer, turn loop, verdicts), `RuntimeRegistry` |
 | `app/bridge/cli.py`, `process.py`, `events.py` | argv/env builder (permission-mode map, prompt tool + inline `--mcp-config`, secret stripping), `ClaudeProcess` (spawn, stdin, events, SIGINT, graceful stop), typed stream-json events |
