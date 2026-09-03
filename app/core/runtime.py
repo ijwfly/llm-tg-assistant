@@ -416,6 +416,11 @@ class RuntimeRegistry:
     def peek(self, topic_id: int) -> TopicRuntime | None:
         return self._by_topic.get(topic_id)
 
+    async def drop(self, topic_id: int) -> None:
+        rt = self._by_topic.pop(topic_id, None)
+        if rt is not None:
+            await rt.shutdown()
+
     async def shutdown_all(self) -> None:
         for rt in list(self._by_topic.values()):
             try:

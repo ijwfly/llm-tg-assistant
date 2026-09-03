@@ -167,6 +167,10 @@ async def cmd_rename(message: Message, command: CommandObject, app) -> None:
     await actions.rename_topic(app, topic, command.args.strip())
 
 
+async def cmd_delete(message: Message, app) -> None:
+    await actions.ask_delete_topic(app, await _topic(app, message))
+
+
 async def cmd_perm(message: Message, command: CommandObject, app) -> None:
     topic = await _topic(app, message)
     mode = (command.args or "").strip()
@@ -231,6 +235,7 @@ def build_router() -> Router:
     router.message.register(cmd_branch, Command("branch"))
     router.message.register(cmd_project, Command("project"))
     router.message.register(cmd_rename, Command("rename"))
+    router.message.register(cmd_delete, Command("delete"))
     router.message.register(any_message, CONTENT_FILTER)
     router.edited_message.register(edited_message, CONTENT_FILTER)
     router.stopped_message_generation.register(on_generation_stopped)

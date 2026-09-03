@@ -16,7 +16,7 @@ async def test_status_sends_a_card_with_buttons(app, spy):
     await run(app, text_update("/status"))
     card = spy.calls("SendMessage")[-1]
     assert card["text"].startswith("Тема")
-    assert card_buttons(card) == ["new:1", "stop:1", "sessions:1", "branch:1", "refresh:1", "hide:1"]
+    assert card_buttons(card) == ["new:1", "stop:1", "sessions:1", "branch:1", "refresh:1", "hide:1", "del:1"]
 
 
 async def test_card_shows_cancel_while_a_turn_runs(app, spy, fake_claude):

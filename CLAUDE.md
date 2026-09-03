@@ -33,7 +33,7 @@ token and `ALLOWED_USERS`, then `docker compose up -d --build`. Locally: `.venv/
 | `app/core/prompts.py` | `PromptService`: pending permission/question/plan prompts, cards, buttons, awaited text, timeouts, abandon on cancel; token → runtime registry |
 | `app/render/markdown.py`, `progress.py`, `keyboards.py`, `cards.py` | fence-aware splitter and preview rules; progress line, tool trail, draft/progress content; inline keyboards and `callback_data` codec; permission (diff/masking), question and plan cards |
 | `app/core/liveview.py` | `LiveView`: draft (private) or progress message (groups), trailing-edge gate, 429, keepalive, delete after finals |
-| `app/core/actions.py` | topic actions shared by commands and buttons (new, stop, cancel, retry, continue, perm, perm forget, card, sessions, topic from session, resume, branch, project, project new, rename) |
+| `app/core/actions.py` | topic actions shared by commands and buttons (new, stop, cancel, retry, continue, perm, perm forget, card, sessions, topic from session, resume, branch, project, project new, rename, delete topic with confirmation) |
 | `app/transport/callbacks.py` | inline-button dispatcher → `actions`; stale buttons answer a toast |
 | `app/ingest/batcher.py`, `classify.py`, `pipeline.py`, `files.py`, `transcribe.py` | sliding-window batcher per topic; prompt/staging matrix, forward attribution, file-name sanitizing; turn assembly (downloads, image blocks, staging consumption, reply quote); inbox with TTL cleanup; external STT command |
 | `spikes/` | phase-0 experiment scripts against the real `claude` (documentation, not product code) |
@@ -55,7 +55,7 @@ are produced by `sender.dump_method` (drops aiogram `Default` sentinels, keeps d
 stdlib-only (it runs from the topic's cwd under the daemon's interpreter and never imports the app); a pending prompt is
 resolved exactly once (`PendingPrompt.future`), and every path that ends a turn calls `prompts.abandon`; `topics.settings`
 (jsonb) holds per-topic flags (`fork`, `title_implicit`) — merge through `TopicsRepo.update_settings`; the only direct Bot API
-call outside the live view is `createForumTopic` in `actions.create_topic` (its result is needed before anything else can be sent).
+calls outside the live view are `createForumTopic` / `deleteForumTopic` in `actions` (their result decides what happens next).
 
 **Claude Code facts that shape the code** (verified in phase 0): `claude -p` needs `--verbose`
 with stream-json; assistant events arrive one content block at a time; SIGINT ends the turn and

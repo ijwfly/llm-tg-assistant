@@ -7,14 +7,14 @@ import zlib
 from pathlib import Path
 
 from aiogram.exceptions import TelegramAPIError
-from aiogram.methods import CreateForumTopic, EditForumTopic
+from aiogram.methods import CreateForumTopic, DeleteForumTopic, EditForumTopic
 
 import settings
 from app.bridge import sessions
 from app.bridge.cli import PERMISSION_MODES
 from app.bridge.rules import forget_rules as _forget_in_files, local_allow_rules
 from app.core.runtime import QueueFull, TurnRequest
-from app.render.keyboards import sessions_kb, topic_card_kb
+from app.render.keyboards import confirm_delete_kb, sessions_kb, topic_card_kb
 from app.transport import texts
 
 ICON_COLORS = [0x6FB9F0, 0xFFD67E, 0xCB86DB, 0x8EEE98, 0xFF93B2, 0xFB6F5F]   # the six Telegram allows
@@ -304,6 +304,36 @@ async def new_project(app, topic: dict, name: str) -> str:
     await send_to_topic(app, topic, texts.PROJECT_OPENED.format(name=name))
     await send_to_topic(app, new_topic, texts.PROJECT_HELLO.format(path=path))
     return texts.PROJECT_OPENED.format(name=name)
+
+
+async def ask_delete_topic(app, topic: dict, message_id: int | None = None) -> str:
+    """Confirmation step: redraw the card (or send one) with «Да, удалить тему» / «Отмена»."""
+    if not topic["thread_id"]:
+        await send_to_topic(app, topic, texts.DELETE_NOT_A_TOPIC)
+        return texts.DELETE_NOT_A_TOPIC
+    text = texts.DELETE_CONFIRM.format(name=topic.get("title") or topic["thread_id"])
+    if message_id:
+        await app.sender.edit_text(topic["chat_id"], topic["thread_id"], message_id, text,
+                                   reply_markup=confirm_delete_kb(topic["id"]), topic_id=topic["id"])
+    else:
+        await send_to_topic(app, topic, text, reply_markup=confirm_delete_kb(topic["id"]), role="card")
+    return ""
+
+
+async def delete_topic(app, topic: dict) -> str:
+    """Delete the Telegram topic (only the bot can delete topics it created in private chats) and forget it.
+    Direct Bot API call: the outcome decides whether the DB row goes."""
+    if not topic["thread_id"]:
+        return texts.DELETE_NOT_A_TOPIC
+    try:
+        await app.bot(DeleteForumTopic(chat_id=topic["chat_id"], message_thread_id=topic["thread_id"]))
+    except TelegramAPIError as e:
+        reason = getattr(e, "message", None) or str(e)
+        await send_to_topic(app, topic, texts.DELETE_FAILED.format(reason=reason))
+        return texts.DELETE_FAILED.format(reason=reason)
+    await app.runtimes.drop(topic["id"])
+    await app.store.topics.delete(topic["id"])
+    return texts.TOAST_DELETED
 
 
 async def rename_topic(app, topic: dict, name: str, *, tell_claude: bool = True) -> str:

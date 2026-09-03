@@ -46,8 +46,14 @@ def topic_card_kb(topic_id: int, *, running: bool) -> InlineKeyboardMarkup:
         rows.append([_btn("Прервать", cb("cancel", topic_id))])
     rows.append([_btn("Новый контекст", cb("new", topic_id)), _btn("Стоп процесса", cb("stop", topic_id))])
     rows.append([_btn("Сессии", cb("sessions", topic_id)), _btn("Ветка", cb("branch", topic_id))])
-    rows.append([_btn("Обновить", cb("refresh", topic_id)), _btn("Скрыть", cb("hide", topic_id))])
+    rows.append([_btn("Обновить", cb("refresh", topic_id)), _btn("Скрыть", cb("hide", topic_id)),
+                 _btn("Удалить тему", cb("del", topic_id))])
     return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+def confirm_delete_kb(topic_id: int) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(inline_keyboard=[[_btn("Да, удалить тему", cb("delc", topic_id)),
+                                                  _btn("Отмена", cb("refresh", topic_id))]])
 
 
 def sessions_kb(topic_id: int, entries: list[tuple[str, bool]]) -> InlineKeyboardMarkup:

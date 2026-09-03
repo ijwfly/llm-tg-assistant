@@ -83,6 +83,10 @@ async def on_callback(cq: CallbackQuery, app) -> None:
             toast = await actions.refresh_card(app, topic, cq.message.message_id) if cq.message else texts.TOAST_STALE
         elif action == "hide":
             toast = await actions.hide_card(app, topic, cq.message.message_id) if cq.message else texts.TOAST_STALE
+        elif action == "del":
+            toast = await actions.ask_delete_topic(app, topic, cq.message.message_id if cq.message else None)
+        elif action == "delc":
+            toast = await actions.delete_topic(app, topic)
         elif action == "sessions":
             toast = await actions.sessions_card(app, topic) and ""
         elif action == "branch":

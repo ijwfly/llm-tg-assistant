@@ -68,6 +68,9 @@ class TopicsRepo:
     async def list_all(self) -> list[dict]:
         return [dict(r) for r in await self.db.fetch("SELECT * FROM topics ORDER BY last_activity_at DESC")]
 
+    async def delete(self, topic_id: int) -> None:
+        await self.db.execute("DELETE FROM topics WHERE id = $1", topic_id)   # turns, prompts, staging cascade
+
     async def find_by_session(self, session_id) -> dict | None:
         return _row(await self.db.fetchrow("SELECT * FROM topics WHERE session_id = $1", session_id))
 

@@ -65,7 +65,9 @@ All notable changes to this project are documented here. The format follows
   «Продолжить здесь <id>» for the topic's folder and «Новая тема <id>» to open a topic under another
   session's folder; `/project new <имя>` creates a folder (`NEW_PROJECTS_DIR`, default `WORK_ROOT`),
   a session and a topic; past sessions of a topic are labelled «эта тема, раньше»; all inline
-  buttons are labelled with words instead of emoji. See `specs/PHASE_6B_SESSION_DISCOVERY.md`.
+  buttons are labelled with words instead of emoji; «Удалить тему» on the topic card and `/delete`
+  (with confirmation) remove a topic through the bot — Telegram lets only the bot delete topics it
+  created in private chats. See `specs/PHASE_6B_SESSION_DISCOVERY.md`.
 - **Test infrastructure** — `scripts/test.sh` with a disposable Postgres, recording Telegram
   session with failure injection, spy, update builders, fake `claude` for the coming phases.
   See `specs/E2E_TESTS.md`.
