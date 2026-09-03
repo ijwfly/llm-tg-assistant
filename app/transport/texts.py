@@ -8,6 +8,9 @@ HELP = (
     "/new — новый контекст (старая сессия остаётся на диске)\n"
     "/cancel, /retry, /stop — прервать, повторить, погасить процесс\n"
     "/cd <путь>, /go [алиас] — сменить директорию (контекст заново)\n"
+    "/sessions, /resume <id|имя> — сессии Claude Code в директории темы, подключиться к любой\n"
+    "/branch [имя], /project <алиас|путь> — новая тема: ветка контекста или проект\n"
+    "/rename <имя> — переименовать тему и сессию\n"
     "/perm [режим] — права темы; /perm forget — забыть правила «Всегда»\n"
     "/topics — список тем\n"
     "/whoami — твой id, чат и тема\n"
@@ -48,6 +51,23 @@ FILE_TOO_BIG = "⚠️ Файл больше {limit} МБ, Telegram не отд�
 VOICE_TOO_BIG = "⚠️ Голосовое больше {limit} МБ. Пропускаю его."
 EDIT_SEEN = "✏️ Вижу правку — отвечаю на неё."
 FILES_EMPTY = "В этой теме файлов пока нет."
+
+SESSIONS_EMPTY = "В {cwd} сессий пока нет."
+SESSION_NOT_FOUND = "Не нашла сессию «{query}». /sessions покажет, что есть."
+SESSION_AMBIGUOUS = "Под «{query}» подходят несколько сессий:\n{rows}\nУточни id."
+RESUMED = "🔗 Подключилась к сессии {short} · «{title}»\nДиректория: {cwd}"
+RESUMED_CWD_KEPT = "⚠️ Директория сессии {cwd} недоступна, тема остаётся в {kept}."
+RESUME_USAGE = "Какую? /resume <id | префикс ≥ 4 | имя>. Список — /sessions."
+BRANCH_OPENED = "🌿 Ветка «{name}» открыта."
+BRANCH_HELLO = "🌿 Продолжаю с копии контекста сессии {short}. Пиши сюда."
+PROJECT_OPENED = "✅ Тема «{name}» открыта."
+PROJECT_HELLO = "📁 {path}\nТема готова, контекст чистый. Пиши сюда."
+PROJECT_USAGE = "Куда? /project <алиас | путь> создаст тему под проект."
+TOPIC_CREATE_FAILED = "⚠️ Не могу создать тему: {reason}. Нужен чат с включёнными темами (форум или личка с topics) и право «Управление темами»."
+RENAMED = "✏️ {name}"
+RENAME_USAGE = "Как назвать? /rename <имя>."
+TOAST_BRANCHED = "Ветка открыта"
+TOAST_RESUMED = "Подключилась"
 
 PERM_SET = "🔐 Права: {mode}. Процесс перезапустится на следующем ходе, контекст остаётся."
 PERM_FORGOT = "Забыла {n} правил. Снова буду спрашивать."
@@ -133,20 +153,27 @@ def go_list(projects: dict[str, str]) -> str:
     return "Куда идём:\n" + "\n".join(f"/go {alias} — {path}" for alias, path in projects.items())
 
 
+def sessions_card(cwd: str, rows: list[tuple[str, str, str, str]]) -> str:
+    """rows: (short id, ago, title, where)."""
+    if not rows:
+        return SESSIONS_EMPTY.format(cwd=cwd)
+    return f"Сессии в {cwd}:\n" + "\n".join(f"▸ {short} · {when} · «{title[:60]}» · {where}" for short, when, title, where in rows)
+
+
 def files_list(rows: list[dict]) -> str:
     if not rows:
         return FILES_EMPTY
     return "Последние файлы темы:\n" + "\n".join(f"{r['kind']}: {r['path']}" for r in rows)
 
 
-def status(topic: dict, rt: dict | None, staging: int = 0) -> str:
+def status(topic: dict, rt: dict | None, staging: int = 0, session_title: str | None = None) -> str:
     thread = topic["thread_id"] if topic["thread_id"] is not None else "—"
     rt = rt or {}
     proc = rt.get("process")
     turn = rt.get("turn")
     lines = [
         f"Тема         {topic.get('title') or '—'} ({topic['chat_id']}:{thread})",
-        f"Сессия       {topic['session_id'] or 'ещё нет'}",
+        f"Сессия       {topic['session_id'] or 'ещё нет'}" + (f" · «{session_title[:60]}»" if session_title else ""),
         f"Директория   {topic['cwd']}",
         f"Модель       {topic['model'] or 'по умолчанию'}   Усилие  {topic['effort'] or 'по умолчанию'}",
         f"Права        {topic['permission_mode'] or 'по умолчанию'}",

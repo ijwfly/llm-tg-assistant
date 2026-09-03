@@ -59,6 +59,11 @@ def build_argv(topic: dict, *, resume: bool, prompt_token: str | None = None) ->
         argv += ["--permission-prompt-tool", PROMPT_TOOL, "--mcp-config", mcp_config(prompt_token)]
     if resume:
         argv += ["--resume", str(topic["session_id"])]
+        fork = (topic.get("settings") or {}).get("fork")
+        if fork:   # a branch topic: the first spawn forks the source session into a new id
+            argv += ["--fork-session"]
+            if fork.get("name"):
+                argv += ["--name", fork["name"]]
     else:
         argv += ["--session-id", str(topic["session_id"])]
     if topic.get("model"):

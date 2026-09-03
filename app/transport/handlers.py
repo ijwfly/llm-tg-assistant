@@ -36,9 +36,17 @@ async def _remember_user(app, message: Message) -> None:
         await app.store.users.upsert(u.id, u.full_name, u.username)
 
 
+def _implicit_title(message: Message) -> bool:
+    created = message.reply_to_message.forum_topic_created if message.is_topic_message and message.reply_to_message else None
+    return bool(created and created.is_name_implicit)
+
+
 async def _topic(app, message: Message) -> dict:
     await _remember_user(app, message)
-    return await app.topics.get_or_create(topic_ref(message), topic_title(message))
+    topic = await app.topics.get_or_create(topic_ref(message), topic_title(message))
+    if _implicit_title(message) and "title_implicit" not in (topic.get("settings") or {}):
+        topic = await app.store.topics.update_settings(topic["id"], title_implicit=True)   # False after a rename
+    return topic
 
 
 # ------------------------------------------------------------------ commands
@@ -131,6 +139,34 @@ async def cmd_go(message: Message, command: CommandObject, app) -> None:
     await _change_dir(app, topic, settings.PROJECTS[alias])
 
 
+async def cmd_sessions(message: Message, app) -> None:
+    await actions.sessions_card(app, await _topic(app, message))
+
+
+async def cmd_resume(message: Message, command: CommandObject, app) -> None:
+    topic = await _topic(app, message)
+    if not (command.args or "").strip():
+        await actions.send_to_topic(app, topic, texts.RESUME_USAGE)
+        return
+    await actions.resume_session(app, topic, command.args.strip())
+
+
+async def cmd_branch(message: Message, command: CommandObject, app) -> None:
+    await actions.branch(app, await _topic(app, message), (command.args or "").strip() or None)
+
+
+async def cmd_project(message: Message, command: CommandObject, app) -> None:
+    await actions.project_topic(app, await _topic(app, message), command.args or "")
+
+
+async def cmd_rename(message: Message, command: CommandObject, app) -> None:
+    topic = await _topic(app, message)
+    if not (command.args or "").strip():
+        await actions.send_to_topic(app, topic, texts.RENAME_USAGE)
+        return
+    await actions.rename_topic(app, topic, command.args.strip())
+
+
 async def cmd_perm(message: Message, command: CommandObject, app) -> None:
     topic = await _topic(app, message)
     mode = (command.args or "").strip()
@@ -190,6 +226,11 @@ def build_router() -> Router:
     router.message.register(cmd_go, Command("go"))
     router.message.register(cmd_perm, Command("perm"))
     router.message.register(cmd_files, Command("files"))
+    router.message.register(cmd_sessions, Command("sessions"))
+    router.message.register(cmd_resume, Command("resume"))
+    router.message.register(cmd_branch, Command("branch"))
+    router.message.register(cmd_project, Command("project"))
+    router.message.register(cmd_rename, Command("rename"))
     router.message.register(any_message, CONTENT_FILTER)
     router.edited_message.register(edited_message, CONTENT_FILTER)
     router.stopped_message_generation.register(on_generation_stopped)

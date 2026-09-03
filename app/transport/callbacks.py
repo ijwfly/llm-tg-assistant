@@ -48,6 +48,12 @@ async def _prompt_action(app, action: str, arg: str, message_id: int | None) -> 
     return texts.TOAST_PROMPT_STALE
 
 
+async def _full_session_id(topic: dict, prefix: str) -> str | None:
+    from app.bridge.sessions import find_sessions
+    matches = find_sessions(prefix, topic["cwd"])
+    return matches[0].session_id if len(matches) == 1 else None
+
+
 async def on_callback(cq: CallbackQuery, app) -> None:
     parsed = parse_cb(cq.data or "")
     if parsed is None:
@@ -77,6 +83,14 @@ async def on_callback(cq: CallbackQuery, app) -> None:
             toast = await actions.refresh_card(app, topic, cq.message.message_id) if cq.message else texts.TOAST_STALE
         elif action == "hide":
             toast = await actions.hide_card(app, topic, cq.message.message_id) if cq.message else texts.TOAST_STALE
+        elif action == "sessions":
+            toast = await actions.sessions_card(app, topic) and ""
+        elif action == "branch":
+            toast = await actions.branch(app, topic)
+        elif action == "rs":
+            toast = await actions.resume_session(app, topic, arg or "")
+        elif action == "br":
+            toast = await actions.branch(app, topic, from_session=(await _full_session_id(topic, arg or "")))
         elif action in PROMPT_ACTIONS:
             toast = await _prompt_action(app, action, arg or "", cq.message.message_id if cq.message else None)
         else:

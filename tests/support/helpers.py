@@ -39,13 +39,14 @@ async def wait_for_text(spy, fragment: str, timeout: float = 3.0) -> str:
     raise AssertionError(f"{fragment!r} never shown; shown: {spy.sent_texts()!r}")
 
 
-async def wait_turn_finished(app, timeout: float = 5.0) -> dict:
-    """Wait until the newest turn row leaves queued/running; returns it."""
+async def wait_turn_finished(app, timeout: float = 5.0, after: int | None = None) -> dict:
+    """Wait until the newest turn row leaves queued/running; returns it. With `after`, the row must be
+    newer than that turn id (a turn that has not been created yet does not count as finished)."""
     loop = asyncio.get_running_loop()
     deadline = loop.time() + timeout
     while loop.time() < deadline:
         row = await app.db.fetchrow("SELECT * FROM turns ORDER BY id DESC LIMIT 1")
-        if row is not None and row["status"] not in ("queued", "running"):
+        if row is not None and (after is None or row["id"] > after) and row["status"] not in ("queued", "running"):
             await wait_outbox_idle(app)
             return dict(row)
         await asyncio.sleep(0.02)

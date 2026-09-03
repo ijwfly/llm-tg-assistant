@@ -8,7 +8,7 @@ from datetime import datetime, timezone
 from aiogram import Bot
 from aiogram.client.session.base import BaseSession
 from aiogram.methods import TelegramMethod
-from aiogram.types import Chat, File, Message, User
+from aiogram.types import Chat, File, ForumTopic, Message, User
 
 from app.transport.sender import _strip_none
 
@@ -21,6 +21,7 @@ class RecordingSession(BaseSession):
         self._fail: dict[str, list[Exception]] = {}
         self._message_ids = itertools.count(1000)
         self.files: dict[str, bytes] = {}   # file_id -> bytes served by getFile/download
+        self._thread_ids = itertools.count(100)
 
     def fail_next(self, method_name: str, exc: Exception) -> None:
         """Inject `exc` into the next call of `method_name` (e.g. "SendMessage")."""
@@ -56,6 +57,9 @@ class RecordingSession(BaseSession):
                 text=getattr(method, "text", None),
                 message_thread_id=getattr(method, "message_thread_id", None),
             )
+        if ForumTopic in candidates:
+            return ForumTopic(message_thread_id=next(self._thread_ids), name=method.name,
+                              icon_color=method.icon_color or 0x6FB9F0)
         if File in candidates:
             return File(file_id=method.file_id, file_unique_id="u" + method.file_id,
                         file_size=len(self.files.get(method.file_id, b"x" * 10)), file_path=method.file_id)

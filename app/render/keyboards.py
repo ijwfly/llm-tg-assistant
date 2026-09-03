@@ -45,7 +45,14 @@ def topic_card_kb(topic_id: int, *, running: bool) -> InlineKeyboardMarkup:
     if running:
         rows.append([_btn("🛑 Прервать", cb("cancel", topic_id))])
     rows.append([_btn("🆕 Новый контекст", cb("new", topic_id)), _btn("⏸ Стоп процесса", cb("stop", topic_id))])
+    rows.append([_btn("📜 Сессии", cb("sessions", topic_id)), _btn("🌿 Ветка", cb("branch", topic_id))])
     rows.append([_btn("🔄 Обновить", cb("refresh", topic_id)), _btn("✖ Скрыть", cb("hide", topic_id))])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+def sessions_kb(topic_id: int, session_ids: list[str]) -> InlineKeyboardMarkup:
+    rows = [[_btn(f"🔗 {sid[:8]}", cb("rs", topic_id, sid[:8])), _btn("🌿", cb("br", topic_id, sid[:8]))]
+            for sid in session_ids]
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 

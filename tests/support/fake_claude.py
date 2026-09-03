@@ -65,6 +65,38 @@ def q(text: str, *options: str, header: str = "Вопрос", multi: bool = Fals
             "options": [{"label": o, "description": descriptions.get(o, "")} for o in options]}
 
 
+def write_transcript(config_dir: str, cwd: str, session_id: str, prompts: list[str], *, custom_title: str | None = None,
+                     ai_title: str | None = None, summary: str | None = None, mtime: float | None = None,
+                     sidechain: bool = False) -> Path:
+    """A minimal Claude Code transcript in the shape the session index reads."""
+    from app.bridge.sessions import sanitize_cwd
+    directory = Path(config_dir) / "projects" / sanitize_cwd(cwd)
+    directory.mkdir(parents=True, exist_ok=True)
+    lines = []
+    for i, p in enumerate(prompts):
+        entry = {"type": "user", "uuid": f"u{i}", "sessionId": session_id, "cwd": cwd,
+                 "timestamp": "2026-09-03T10:00:00.000Z",
+                 "message": {"role": "user", "content": p}}
+        if sidechain and i == 0:
+            entry["isSidechain"] = True
+        lines.append(json.dumps(entry, ensure_ascii=False))
+        lines.append(json.dumps({"type": "assistant", "uuid": f"a{i}", "sessionId": session_id,
+                                 "message": {"role": "assistant", "content": [{"type": "text", "text": f"ответ {i}"}]}},
+                                ensure_ascii=False))
+    if summary:
+        lines.append(json.dumps({"type": "summary", "summary": summary, "leafUuid": "a0"}, ensure_ascii=False))
+    if ai_title:
+        lines.append(json.dumps({"type": "ai-title", "aiTitle": ai_title, "sessionId": session_id}, ensure_ascii=False))
+    if custom_title:
+        lines.append(json.dumps({"type": "custom-title", "customTitle": custom_title, "sessionId": session_id}, ensure_ascii=False))
+    path = directory / f"{session_id}.jsonl"
+    path.write_text("\n".join(lines) + "\n")
+    if mtime is not None:
+        import os
+        os.utime(path, (mtime, mtime))
+    return path
+
+
 class FakeClaude:
     def __init__(self, root: Path):
         self.scenarios = root / "scenarios"

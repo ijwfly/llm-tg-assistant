@@ -54,8 +54,29 @@ class TopicsRepo:
                      title = COALESCE(EXCLUDED.title, topics.title)
                RETURNING *""", chat_id, thread_id, title, cwd, permission_mode, model, effort, uuid.uuid4()))
 
+    async def create(self, chat_id: int, thread_id: int | None, *, cwd: str, title: str | None,
+                     permission_mode: str | None, model: str | None, effort: str | None,
+                     session_id, session_resumable: bool = False, settings: dict | None = None) -> dict:
+        """A topic for a thread the bot just created (no ON CONFLICT: the thread is new)."""
+        return _row(await self.db.fetchrow(
+            """INSERT INTO topics (chat_id, thread_id, title, cwd, permission_mode, model, effort, session_id,
+                                   session_resumable, settings)
+               VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING *""",
+            chat_id, thread_id, title, cwd, permission_mode, model, effort, session_id, session_resumable,
+            settings or {}))
+
     async def list_all(self) -> list[dict]:
         return [dict(r) for r in await self.db.fetch("SELECT * FROM topics ORDER BY last_activity_at DESC")]
+
+    async def find_by_session(self, session_id) -> dict | None:
+        return _row(await self.db.fetchrow("SELECT * FROM topics WHERE session_id = $1", session_id))
+
+    async def update_settings(self, topic_id: int, **fields: Any) -> dict:
+        """Merge into topics.settings (None values remove keys)."""
+        row = await self.get_by_id(topic_id)
+        merged = {**(row.get("settings") or {}), **fields}
+        merged = {k: v for k, v in merged.items() if v is not None}
+        return await self.update(topic_id, settings=merged)
 
     async def get_by_id(self, topic_id: int) -> dict | None:
         return _row(await self.db.fetchrow("SELECT * FROM topics WHERE id = $1", topic_id))

@@ -26,6 +26,7 @@ log = logging.getLogger(__name__)
 class TurnRequest:
     content: list[dict]                 # content blocks for the user message
     turn_id: int | None = None          # set when re-running an existing turn row (/retry creates a new one)
+    quiet: bool = False                 # housekeeping turn (/rename): no "no text" verdict
 
 
 @dataclass
@@ -274,6 +275,8 @@ class TopicRuntime:
                     log.info("topic %s: session id changed %s -> %s", self.topic_id, topic["session_id"], e.session_id)
                     await self.app.store.topics.update(self.topic_id, session_id=uuid.UUID(e.session_id))
                     topic["session_id"] = e.session_id
+                if (topic.get("settings") or {}).get("fork"):   # the fork happened: never fork again
+                    topic = await self.app.store.topics.update_settings(self.topic_id, fork=None)
             elif isinstance(e, ev.TextDelta):
                 state.stream_buf += e.text
                 state.live.touch()
@@ -359,12 +362,26 @@ class TopicRuntime:
             await send(texts.TURN_ERROR.format(error=(r.result or r.subtype)[:1500]), keyboards.retry_kb(tid))
         elif state.compacted and state.texts_sent == 0:
             await send(texts.COMPACTED.format(pre_tokens=state.compact_pre_tokens or "?"))
-        elif state.texts_sent == 0:
+        elif state.texts_sent == 0 and not state.request.quiet:
             await send(texts.TURN_NO_TEXT)
+        if not r.is_error:
+            await self._rename_implicit_topic(state)
         if state.denials:
             await send(texts.DENIED.format(tools=", ".join(dict.fromkeys(state.denials))), keyboards.denied_kb(tid))
         if settings.SHOW_TURN_STATS:
             await send(texts.turn_stats(r.duration_ms, r.total_cost_usd, r.num_turns))
+
+    async def _rename_implicit_topic(self, state: TurnState) -> None:
+        """A topic the user created without a name gets one from the first prompt (PROJECT_SPEC 4.2)."""
+        topic = await self.app.store.topics.get_by_id(self.topic_id)
+        if not topic or not (topic.get("settings") or {}).get("title_implicit") or not self.thread_id:
+            return
+        text = " ".join(b.get("text", "") for b in state.request.content if b.get("type") == "text")
+        title = " ".join(text.split())[:40].strip()
+        if not title or title.startswith("/"):
+            return
+        from app.core import actions
+        await actions.rename_topic(self.app, topic, title, tell_claude=False)
 
     async def _drop_dead_process(self) -> None:
         """After SIGINT the CLI exits on its own; make sure it is gone and forget it."""

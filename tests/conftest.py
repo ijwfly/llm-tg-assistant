@@ -84,6 +84,7 @@ def fake_claude(tmp_path, request) -> FakeClaude:
     settings.WORK_ROOT = str(work)
     settings.DEFAULT_CWD = str(work)
     settings.INBOX_DIR = str(tmp_path / "inbox")
+    settings.CLAUDE_CONFIG_DIR = str(tmp_path / "claude")   # session index reads transcripts from here
     # unix socket paths are limited to ~100 bytes: keep it in the short system temp dir, not tmp_path
     sock_dir = tempfile.mkdtemp(prefix="tgb")
     request.addfinalizer(lambda: shutil.rmtree(sock_dir, ignore_errors=True))
