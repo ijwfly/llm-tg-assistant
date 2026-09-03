@@ -100,8 +100,9 @@ async def test_always_button_adds_a_local_rule_and_remembers_it(app, spy, fake_c
     assert await app.db.fetchval("SELECT rule FROM topic_rules") == "Bash(git status *)"
     assert spy.calls("EditMessageText")[-1]["rich_message"]["markdown"].endswith(
         "🔓 разрешено, и больше не спрошу: Bash(git status *)")
-    await run(app, text_update("/perm"))
-    assert "• Bash(git status *)" in spy.last_text()
+    await run(app, text_update("/status"))
+    await run(app, callback_update("page:1:more", message_id=500))
+    assert "Забыть правила «Всегда» (1)" in button_texts(spy.calls("EditMessageText")[-1])
 
 
 async def test_no_always_button_for_edits_and_dangerous_commands(app, spy, fake_claude):
@@ -160,7 +161,7 @@ async def test_cancel_while_a_card_waits_denies_and_marks_the_card(app, spy, fak
     bash_turn(fake_claude)
     await feed(app, text_update("прогони тесты"))
     await wait_card(spy)
-    await feed(app, text_update("/cancel"))
+    await feed(app, callback_update("cancel:1"))
     await wait_for_text(spy, "🛑 Прервано.")
     turn = await wait_turn_finished(app)
     assert turn["status"] == "cancelled"
@@ -203,7 +204,8 @@ async def test_write_card_shows_the_new_file_and_unknown_tool_is_masked(app, spy
 
 
 async def test_dont_ask_mode_runs_without_the_prompt_tool(app, spy, fake_claude):
-    await run(app, text_update("/perm dontAsk"))
+    await run(app, text_update("/status"))
+    await run(app, callback_update("perm:1:dontAsk"))
     fake_claude.text_turn(LONG)
     await feed(app, text_update("привет"))
     await wait_for_text(spy, LONG.strip())
@@ -220,12 +222,14 @@ async def test_perm_forget_removes_bot_rules_from_the_local_settings_file(app, s
     settings_file = Path(settings.DEFAULT_CWD) / ".claude" / "settings.local.json"
     settings_file.parent.mkdir(parents=True)
     settings_file.write_text(json.dumps({"permissions": {"allow": ["Bash(git status *)", "Read"]}}))
-    await run(app, text_update("/perm forget"))
-    assert spy.last_text() == "Забыла 1 правил. Снова буду спрашивать."
+    await run(app, text_update("/status"))
+    await run(app, callback_update("forget:1", message_id=500))
+    assert "Забыла 1 правил. Снова буду спрашивать." in spy.sent_texts()
     assert json.loads(settings_file.read_text())["permissions"]["allow"] == ["Read"]
     assert await app.db.fetchval("SELECT count(*) FROM topic_rules") == 0
-    await run(app, text_update("/perm forget"))
-    assert spy.last_text() == "В этой теме я правил не добавляла."
+    assert "Забыть правила" not in " ".join(button_texts(spy.calls("EditMessageText")[-1]))
+    await run(app, callback_update("forget:1", message_id=500))
+    assert "В этой теме я правил не добавляла." in spy.sent_texts()
 
 
 async def test_daemon_restart_marks_pending_prompts_stale(app, spy, fake_claude, db):

@@ -32,7 +32,7 @@ async def test_sessions_card_lists_the_whole_machine_own_folder_first(app, spy, 
                      mtime=now - 600)
     write_transcript(settings.CLAUDE_CONFIG_DIR, str(other), OTHER, ["в другом проекте"], mtime=now - 30)
     write_transcript(settings.CLAUDE_CONFIG_DIR, str(outside), "dddddddd-4444-4444-8444-444444444444", ["вне корня"], mtime=now)
-    await run(app, text_update("/sessions"))
+    await run(app, callback_update("sessions:1"))
     card = spy.calls("SendMessage")[-1]
     lines = card["text"].splitlines()
     assert lines[0] == f"Сессии Claude Code в {settings.WORK_ROOT}:"
@@ -70,12 +70,13 @@ async def test_past_session_of_the_topic_is_labelled(app, spy, fake_claude):
     write_transcript(settings.CLAUDE_CONFIG_DIR, topic["cwd"], old, ["первая жизнь темы"])
     await run(app, text_update("/new"))
     assert (await app.topics.list_all())[0]["settings"]["past_sessions"] == [old]
-    await run(app, text_update("/sessions"))
+    await run(app, callback_update("sessions:1"))
     assert f"▸ . · {old[:8]} · только что · «первая жизнь темы» · эта тема, раньше" in spy.last_text()
 
 
 async def test_sessions_card_when_empty(app, spy, fake_claude):
-    await run(app, text_update("/sessions"))
+    await run(app, text_update("/status"))
+    await run(app, callback_update("sessions:1"))
     assert spy.last_text() == f"Внутри {settings.WORK_ROOT} сессий Claude Code пока нет."
 
 
@@ -83,7 +84,7 @@ async def test_resume_by_prefix_switches_the_topic_and_resumes_on_the_next_turn(
     await run(app, text_update("/status"))
     topic = (await app.topics.list_all())[0]
     write_transcript(settings.CLAUDE_CONFIG_DIR, topic["cwd"], TERM, ["терминальная задача"])
-    await run(app, text_update("/resume aaaa"))
+    await run(app, callback_update("rs:1:aaaaaaaa"))
     assert spy.last_text() == f"🔗 Подключилась к сессии aaaaaaaa · «терминальная задача»\nДиректория: {topic['cwd']}"
     updated = (await app.topics.list_all())[0]
     assert str(updated["session_id"]) == TERM and updated["session_resumable"] is True
@@ -99,7 +100,7 @@ async def test_resume_moves_the_topic_into_the_sessions_directory(app, spy, fake
     other = tmp_path / "work" / "other"
     other.mkdir()
     write_transcript(settings.CLAUDE_CONFIG_DIR, str(other), OTHER, ["в другом проекте"])
-    await run(app, text_update(f"/resume {OTHER}"))
+    await run(app, callback_update("rs:1:bbbbbbbb"))
     assert (await app.topics.list_all())[0]["cwd"] == str(other.resolve())
     assert f"Директория: {other.resolve()}" in spy.last_text()
 
@@ -108,25 +109,16 @@ async def test_resume_keeps_the_directory_when_the_sessions_cwd_is_unusable(app,
     await run(app, text_update("/status"))
     topic = (await app.topics.list_all())[0]
     write_transcript(settings.CLAUDE_CONFIG_DIR, "/nonexistent/host/path", OTHER, ["с хоста"])
-    await run(app, text_update("/resume bbbbbbbb"))
+    await run(app, callback_update("rs:1:bbbbbbbb"))
     assert (await app.topics.list_all())[0]["cwd"] == topic["cwd"]
     assert spy.last_text().startswith("⚠️ Директория сессии /nonexistent/host/path недоступна")
 
 
-async def test_resume_unknown_ambiguous_and_by_name(app, spy, fake_claude):
+async def test_resume_of_an_unknown_session_explains(app, spy, fake_claude):
     await run(app, text_update("/status"))
-    topic = (await app.topics.list_all())[0]
-    await run(app, text_update("/resume"))
-    assert spy.last_text().startswith("Какую? /resume")
-    await run(app, text_update("/resume zzzz"))
-    assert spy.last_text() == "Не нашла сессию «zzzz». /sessions покажет, что есть."
-    write_transcript(settings.CLAUDE_CONFIG_DIR, topic["cwd"], TERM, ["a"], custom_title="Релиз")
-    write_transcript(settings.CLAUDE_CONFIG_DIR, topic["cwd"], "aaaaaaaa-9999-4999-8999-999999999999", ["b"], custom_title="релиз")
-    await run(app, text_update("/resume релиз"))
-    assert spy.last_text().startswith("Под «релиз» подходят несколько сессий:") and "▸ aaaaaaaa · «Релиз»" in spy.last_text()
-    assert str((await app.topics.list_all())[0]["session_id"]) == str(topic["session_id"])
-    await run(app, text_update(f"/resume {TERM}"))
-    assert str((await app.topics.list_all())[0]["session_id"]) == TERM
+    await run(app, callback_update("rs:1:zzzzzzzz"))
+    assert spy.last_text() == "Не нашла сессию «zzzzzzzz». /sessions покажет, что есть."
+    assert spy.calls("AnswerCallbackQuery")[-1]["text"].startswith("Не нашла")
 
 
 async def test_resume_button_on_the_sessions_card(app, spy, fake_claude):

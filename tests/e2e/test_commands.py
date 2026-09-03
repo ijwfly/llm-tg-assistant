@@ -3,10 +3,9 @@ from tests.support.helpers import feed, run, wait_for_text
 from tests.support.updates import text_update
 
 
-async def test_whoami_shows_ids(app, spy):
-    await run(app, text_update("/whoami", user_id=1, chat_id=1))
-    spy.assert_shown_text_contains("Твой id: 1")
-    spy.assert_shown_text_contains("Тема: —")
+async def test_help_shows_ids(app, spy):
+    await run(app, text_update("/help", user_id=1, chat_id=1))
+    spy.assert_shown_text_contains("Твой id: 1 · чат: 1 · тема: —")
 
 
 async def test_status_creates_topic_with_default_cwd(app, spy):
@@ -15,14 +14,6 @@ async def test_status_creates_topic_with_default_cwd(app, spy):
     assert len(topics) == 1 and topics[0]["cwd"] == settings.DEFAULT_CWD and topics[0]["thread_id"] is None
     spy.assert_shown_text_contains("Директория   " + settings.DEFAULT_CWD)
     assert topics[0]["permission_mode"] == "prompt"
-
-
-async def test_topics_lists_known_topics(app, spy):
-    await run(app, text_update("/topics"))
-    assert spy.last_text() == "Пока пусто."
-    await run(app, text_update("/status"))
-    await run(app, text_update("/topics"))
-    assert settings.DEFAULT_CWD in spy.last_text()
 
 
 async def test_forum_topic_message_creates_topic_bound_to_thread(app, spy):
@@ -43,7 +34,7 @@ async def test_reply_thread_in_plain_group_is_not_a_topic(app, spy):
 
 async def test_start_is_help(app, spy):
     await run(app, text_update("/start"))
-    spy.assert_shown_text_contains("Каждая тема — своя сессия")
+    spy.assert_shown_text_contains("Тема = папка, в ней — текущая сессия")
 
 
 async def test_plain_text_registers_topic_and_user(app, spy, fake_claude):

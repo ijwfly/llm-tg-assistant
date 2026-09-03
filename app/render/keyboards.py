@@ -45,12 +45,16 @@ def _onoff(value: bool) -> str:
 
 
 def topic_card_kb(topic_id: int, *, running: bool, perm: str, model: str, effort: str,
-                  flags: dict[str, bool], labels: dict[str, str], page: str = "main") -> InlineKeyboardMarkup:
-    """The topic card keyboard. `flags`/`labels`: switch key -> value / caption (PROJECT_SPEC 4.9)."""
+                  flags: dict[str, bool], labels: dict[str, str], page: str = "main",
+                  rules: int = 0) -> InlineKeyboardMarkup:
+    """The topic card keyboard. `flags`/`labels`: switch key -> value / caption (PROJECT_SPEC 4.9);
+    `rules` = «Всегда» rules added by the bot in this topic (a «Забыть правила» button when > 0)."""
     if page == "more":
         keys = list(flags)
         rows = [[_btn(f"{labels[k]}: {_onoff(flags[k])}", cb("tgl", topic_id, k)) for k in keys[i:i + 2]]
                 for i in range(0, len(keys), 2)]
+        if rules:
+            rows.append([_btn(f"Забыть правила «Всегда» ({rules})", cb("forget", topic_id))])
         rows.append([_btn("Назад", cb("page", topic_id, "main"))])
         return InlineKeyboardMarkup(inline_keyboard=rows)
     rows = []

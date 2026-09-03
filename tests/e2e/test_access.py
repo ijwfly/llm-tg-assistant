@@ -31,4 +31,4 @@ async def test_allowed_chats_blocks_other_chats(app, spy):
 
 async def test_allowed_user_gets_help(app, spy):
     await run(app, text_update("/help"))
-    spy.assert_shown_text_contains("Каждая тема — своя сессия")
+    spy.assert_shown_text_contains("Тема = папка, в ней — текущая сессия")

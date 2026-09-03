@@ -12,6 +12,15 @@ All notable changes to this project are documented here. The format follows
   every later message of that topic. Identical edits now count as delivered; other `Bad Request`
   and `Forbidden` errors mark the row `failed` immediately (found on the phase-3 live check).
 
+### Removed
+
+- **Slash commands that duplicated buttons** — `/cancel`, `/retry`, `/stop`, `/sessions`,
+  `/resume`, `/branch`, `/delete`, `/cd`, `/go`, `/perm`, `/model`, `/effort`, `/voice`,
+  `/whoami`, `/topics`. Their actions stay as buttons on the topic card, the live view and the
+  verdicts; «Забыть правила «Всегда»» lives on the card's «Ещё» page; ids are shown by `/help`.
+  The menu keeps 8 commands: `/status`, `/new`, `/project`, `/rename`, `/soul`, `/files`,
+  `/usage`, `/help`.
+
 ### Added
 
 - **Project spec** — `specs/PROJECT_SPEC.md`: topic = Claude Code session, raw `claude -p`

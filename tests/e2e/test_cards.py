@@ -110,15 +110,6 @@ async def test_continue_button_after_a_limit(app, spy, fake_claude):
     assert fake_claude.stdin_texts()[-1] == "продолжай"
 
 
-async def test_perm_command_shows_and_sets_mode(app, spy):
-    await run(app, text_update("/perm"))
-    assert "← prompt" in spy.last_text()
-    await run(app, text_update("/perm plan"))
-    assert (await app.topics.list_all())[0]["permission_mode"] == "plan"
-    await run(app, text_update("/perm bypass"))
-    assert "Не знаю режим bypass" in spy.last_text()
-
-
 def test_command_menu_lists_every_bridge_command():
     from app.transport.handlers import build_router
     registered = set()

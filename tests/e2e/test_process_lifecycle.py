@@ -3,7 +3,7 @@ import asyncio
 import settings
 from tests.support import fake_claude as fc
 from tests.support.helpers import feed, wait_for_text, wait_turn_finished
-from tests.support.updates import text_update
+from tests.support.updates import callback_update, text_update
 
 
 async def _first_turn(app, spy, fake_claude, answer="раз"):
@@ -33,7 +33,7 @@ async def test_idle_process_is_stopped_and_next_turn_resumes(app, spy, fake_clau
 
 async def test_stop_kills_the_process_and_keeps_the_session(app, spy, fake_claude):
     topic = await _first_turn(app, spy, fake_claude)
-    await feed(app, text_update("/stop"))
+    await feed(app, callback_update("stop:1"))
     await wait_for_text(spy, "⏸ Процесс остановлен")
     assert app.runtimes.peek(topic["id"]).proc is None
     fake_claude.text_turn("снова")
@@ -49,42 +49,6 @@ async def test_new_gives_a_fresh_session_id(app, spy, fake_claude):
     await wait_for_text(spy, "🆕 Новый контекст")
     after = (await app.topics.list_all())[0]
     assert after["session_id"] != topic["session_id"] and after["session_resumable"] is False
-
-
-async def test_cd_inside_work_root_restarts_context(app, spy, fake_claude, tmp_path):
-    topic = await _first_turn(app, spy, fake_claude)
-    other = tmp_path / "work" / "other"
-    other.mkdir()
-    await feed(app, text_update(f"/cd {other}"))
-    await wait_for_text(spy, f"📁 {other.resolve()}")
-    after = (await app.topics.list_all())[0]
-    assert after["cwd"] == str(other.resolve()) and after["session_id"] != topic["session_id"]
-    fake_claude.text_turn("там")
-    await feed(app, text_update("где я?"))
-    await wait_for_text(spy, "там")
-    assert fake_claude.cwds()[-1] == str(other.resolve())
-
-
-async def test_cd_outside_work_root_is_refused(app, spy, fake_claude, tmp_path):
-    outside = tmp_path / "outside"
-    outside.mkdir()
-    await feed(app, text_update(f"/cd {outside}"))
-    await wait_for_text(spy, "лежит вне рабочего корня")
-    await feed(app, text_update("/cd /definitely/missing/dir"))
-    await wait_for_text(spy, "⚠️ нет такой директории")
-    assert (await app.topics.list_all())[0]["cwd"] == settings.DEFAULT_CWD
-
-
-async def test_go_uses_project_aliases(app, spy, fake_claude, tmp_path):
-    proj = tmp_path / "work" / "proj"
-    proj.mkdir()
-    settings.PROJECTS = {"proj": str(proj)}
-    await feed(app, text_update("/go"))
-    await wait_for_text(spy, "/go proj — ")
-    await feed(app, text_update("/go nope"))
-    await wait_for_text(spy, "Нет алиаса nope")
-    await feed(app, text_update("/go proj"))
-    await wait_for_text(spy, f"📁 {proj.resolve()}")
 
 
 async def test_result_with_another_session_id_is_adopted(app, spy, fake_claude):

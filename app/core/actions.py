@@ -206,9 +206,10 @@ async def topic_card(app, topic: dict, *, page: str = "main", user_id: int | Non
     user_settings = await app.store.users.settings(user_id) if user_id else {}
     flags = {k: prefs.topic_flag(topic, k) for k in prefs.TOPIC_FLAGS}
     flags.update({k: prefs.user_flag(user_settings, k) for k in prefs.USER_FLAGS})
+    rules = len(await app.store.rules.list(topic["id"])) if page == "more" else 0
     kb = topic_card_kb(topic["id"], running=running, perm=topic.get("permission_mode") or settings.DEFAULT_PERMISSION_MODE,
                        model=prefs.shown(topic.get("model")), effort=prefs.shown(topic.get("effort")),
-                       flags=flags, labels=prefs.FLAG_LABELS, page=page)
+                       flags=flags, labels=prefs.FLAG_LABELS, page=page, rules=rules)
     return texts.status(topic, state, staging, title, app.runtimes.rate_limit), kb
 
 

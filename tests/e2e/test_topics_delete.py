@@ -51,8 +51,7 @@ async def test_delete_refused_by_telegram_keeps_the_topic(app, spy, fake_claude)
 
 
 async def test_delete_in_the_chat_itself_is_refused(app, spy, fake_claude):
-    await run(app, text_update("/delete"))
+    await run(app, text_update("/status"))
+    await run(app, callback_update("del:1", message_id=500))
     assert spy.last_text() == "Это не тема, а сам чат — удалять нечего."
-    await run(app, text_update("/delete", thread_id=5, topic_name="Проект"))
-    card = spy.calls("SendMessage")[-1]
-    assert card["text"].startswith("Удалить тему «Проект»") and button_texts(card) == ["Да, удалить тему", "Отмена"]
+    assert spy.calls("DeleteForumTopic") == [] and len(await app.topics.list_all()) == 1

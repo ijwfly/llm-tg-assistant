@@ -86,6 +86,9 @@ async def on_callback(cq: CallbackQuery, app) -> None:
         elif action == "cyc":
             toast = await actions.cycle_setting(app, topic, arg or "")
             await _refresh_after(app, topic, cq)
+        elif action == "forget":
+            toast = await actions.forget_rules(app, topic)
+            await _refresh_after(app, topic, cq, page="more")
         elif action == "tgl":
             toast = await actions.toggle_flag(app, topic, cq.from_user.id, arg or "")
             await _refresh_after(app, topic, cq, page="more")

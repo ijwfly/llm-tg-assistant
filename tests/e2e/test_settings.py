@@ -102,26 +102,6 @@ async def test_voice_toggle_needs_tts(app, spy, fake_claude):
     assert "voice" not in (await app.topics.list_all())[0]["settings"]
 
 
-async def test_model_and_effort_commands(app, spy, fake_claude):
-    await run(app, text_update("/model"))
-    assert spy.last_text() == "Модель темы: по умолчанию. /model <имя|default> — сменить; варианты: sonnet, opus, haiku."
-    await run(app, text_update("/model sonnet"))
-    assert spy.last_text().startswith("🤖 Модель: sonnet.")
-    await run(app, text_update("/effort nope"))
-    assert spy.last_text().startswith("Не знаю усилие nope")
-    await run(app, text_update("/effort xhigh"))
-    assert spy.last_text().startswith("🎚 Усилие: xhigh.")
-    fake_claude.text_turn(LONG)
-    await feed(app, text_update("привет"))
-    await wait_for_text(spy, LONG.strip())
-    argv = fake_claude.argv_calls()[-1]
-    assert argv_value(argv, "--model") == "sonnet" and argv_value(argv, "--effort") == "xhigh"
-    await run(app, text_update("/model default"))
-    assert (await app.topics.list_all())[0]["model"] is None
-    await run(app, text_update("/effort"))
-    assert spy.last_text().startswith("Усилие темы: xhigh.")
-
-
 async def test_preamble_and_soul_go_into_one_system_prompt_file(app, spy, fake_claude, tmp_path):
     soul = tmp_path / "work" / "SOUL.md"
     soul.write_text("Отвечай как пират.\n")

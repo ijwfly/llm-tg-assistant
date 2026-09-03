@@ -18,31 +18,32 @@ async def test_branch_creates_a_topic_that_forks_the_session_once(app, spy, fake
     await feed(app, text_update("первый ход", thread_id=5, topic_name="Проект"))
     await wait_turn_finished(app)
     source = (await app.topics.list_all())[0]
-    await run(app, text_update("/branch эксперимент", thread_id=5, topic_name="Проект"))
+    await run(app, callback_update("branch:1"))
     created = spy.calls("CreateForumTopic")[-1]
-    assert created["chat_id"] == 1 and created["name"] == "эксперимент" and created["icon_color"] in (0x6FB9F0, 0xFFD67E, 0xCB86DB, 0x8EEE98, 0xFF93B2, 0xFB6F5F)
+    assert created["chat_id"] == 1 and created["name"] == "Проект · ветка" and created["icon_color"] in (0x6FB9F0, 0xFFD67E, 0xCB86DB, 0x8EEE98, 0xFF93B2, 0xFB6F5F)
     new = next(t for t in await app.topics.list_all() if t["id"] != source["id"])
-    assert new["thread_id"] == 100 and new["title"] == "эксперимент" and new["cwd"] == source["cwd"]
+    assert new["thread_id"] == 100 and new["title"] == "Проект · ветка" and new["cwd"] == source["cwd"]
     assert str(new["session_id"]) == str(source["session_id"]) and new["session_resumable"] is True
-    assert new["settings"]["fork"] == {"from": str(source["session_id"]), "name": "эксперимент"}
-    assert "🌿 Ветка «эксперимент» открыта." in spy.sent_texts()
+    assert new["settings"]["fork"] == {"from": str(source["session_id"])}
+    assert "🌿 Ветка «Проект · ветка» открыта." in spy.sent_texts()
+    assert spy.calls("AnswerCallbackQuery")[-1]["text"] == "Ветка открыта"
     hello = next(p for p in spy.calls("SendMessage") if p["text"].startswith("🌿 Продолжаю"))
     assert hello["message_thread_id"] == 100
     assert app.runtimes.peek(source["id"]).proc is None    # the source process was stopped to flush the transcript
     # the first turn in the branch forks; the CLI reports a new session id which the topic adopts
     new_id = "cccccccc-3333-4333-8333-333333333333"
     fake_claude.enqueue(fc.assistant_text(LONG2), fc.result(session_id=new_id))
-    await feed(app, text_update("что мы делали?", thread_id=100, topic_name="эксперимент"))
+    await feed(app, text_update("что мы делали?", thread_id=100, topic_name="Проект · ветка"))
     await wait_for_text(spy, LONG2.strip())
     await wait_turn_finished(app, after=1)
     argv = fake_claude.argv_calls()[-1]
     assert argv[argv.index("--resume") + 1] == str(source["session_id"]) and "--fork-session" in argv
-    assert argv[argv.index("--name") + 1] == "эксперимент"
+    assert "--name" not in argv
     branch = await app.store.topics.get_by_id(new["id"])
     assert str(branch["session_id"]) == new_id and "fork" not in branch["settings"]
     await app.runtimes.get(branch).stop_process()
     fake_claude.text_turn(LONG3)
-    await feed(app, text_update("ещё", thread_id=100, topic_name="эксперимент"))
+    await feed(app, text_update("ещё", thread_id=100, topic_name="Проект · ветка"))
     await wait_for_text(spy, LONG3.strip(), timeout=5)
     argv = fake_claude.argv_calls()[-1]
     assert argv[argv.index("--resume") + 1] == new_id and "--fork-session" not in argv

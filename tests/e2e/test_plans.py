@@ -14,7 +14,8 @@ def plan_turn(fake):
 
 
 async def test_plan_card_accept_switches_to_accept_edits(app, spy, fake_claude):
-    await run(app, text_update("/perm plan"))
+    await run(app, text_update("/status"))
+    await run(app, callback_update("perm:1:plan"))
     plan_turn(fake_claude)
     await feed(app, text_update("спланируй рефакторинг"))
     card = await wait_card(spy, "📋 **План готов**")
@@ -37,7 +38,8 @@ async def test_plan_card_accept_switches_to_accept_edits(app, spy, fake_claude):
 
 
 async def test_plan_accept_with_questions_sets_default_mode(app, spy, fake_claude):
-    await run(app, text_update("/perm plan"))
+    await run(app, text_update("/status"))
+    await run(app, callback_update("perm:1:plan"))
     plan_turn(fake_claude)
     await feed(app, text_update("спланируй"))
     await wait_card(spy, "📋 **План готов**")
@@ -50,7 +52,8 @@ async def test_plan_accept_with_questions_sets_default_mode(app, spy, fake_claud
 
 
 async def test_plan_rework_denies_with_the_next_message(app, spy, fake_claude):
-    await run(app, text_update("/perm plan"))
+    await run(app, text_update("/status"))
+    await run(app, callback_update("perm:1:plan"))
     plan_turn(fake_claude)
     await feed(app, text_update("спланируй"))
     await wait_card(spy, "📋 **План готов**")

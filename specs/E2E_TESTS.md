@@ -30,7 +30,7 @@ Status: фаза 7 — инфраструктура, команды, outbox, х�
 | Файл | Конвейер | Сценарии |
 |---|---|---|
 | `e2e/test_access.py` | Update → `AccessMiddleware` | чужой пользователь — тишина и нет темы; чужой callback — тост `Not authorized`; `ALLOWED_CHATS`; разрешённый получает `/help` |
-| `e2e/test_commands.py` | Update → middleware → хендлеры → `TopicService` → outbox | `/whoami`; `/status` создаёт тему с `DEFAULT_CWD`; `/topics`; тема форума с `thread_id` и названием; reply-тред группы не тема; `/start` = `/help`; текст создаёт тему и пользователя |
+| `e2e/test_commands.py` | Update → middleware → хендлеры → `TopicService` → outbox | `/help` с id; `/status` создаёт тему с `DEFAULT_CWD`; `/topics`; тема форума с `thread_id` и названием; reply-тред группы не тема; `/start` = `/help`; текст создаёт тему и пользователя |
 | `e2e/test_turns.py` | сообщение → `TopicRuntime` → fake `claude` → события → rich-ответ → outbox → `message_links` | ход и ответ, `turns` со статистикой, argv с `--session-id`; второй ход в тот же процесс; `✔️` без текста; `🧹` compact; `⚠️` ошибка; `⏹` лимит; `🔒` отклонённые; reply-цитаты (бот/чужой); `/cost` уходит в Claude; `/clear` = новый контекст; подпись статистики |
 | `e2e/test_turn_queue.py` | очередь темы | хинт один раз и порядок ответов; переполнение очереди |
 | `e2e/test_turn_control.py` | `/cancel`, таймаут, падения, `/retry` | SIGINT → `🛑` и resume; отмена без хода; `⏱`; падение с незаметным повтором; двойное падение `💥` со stderr; `/retry` повторяет промпт |

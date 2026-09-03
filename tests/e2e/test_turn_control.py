@@ -3,7 +3,7 @@ import asyncio
 import settings
 from tests.support import fake_claude as fc
 from tests.support.helpers import feed, wait_for_text, wait_turn_finished
-from tests.support.updates import text_update
+from tests.support.updates import callback_update, text_update
 
 
 async def test_cancel_interrupts_the_turn_and_next_turn_resumes(app, spy, fake_claude):
@@ -11,7 +11,7 @@ async def test_cancel_interrupts_the_turn_and_next_turn_resumes(app, spy, fake_c
     fake_claude.text_turn("после отмены")
     await feed(app, text_update("долгая задача"))
     await wait_for_text(spy, "начинаю")
-    await feed(app, text_update("/cancel"))
+    await feed(app, callback_update("cancel:1"))
     await wait_for_text(spy, "🛑 Прервано.")
     turn = await wait_turn_finished(app)
     assert turn["status"] == "cancelled"
@@ -24,7 +24,8 @@ async def test_cancel_interrupts_the_turn_and_next_turn_resumes(app, spy, fake_c
 
 
 async def test_cancel_without_a_turn_says_so(app, spy, fake_claude):
-    await feed(app, text_update("/cancel"))
+    await feed(app, text_update("/status"))
+    await feed(app, callback_update("cancel:1"))
     await wait_for_text(spy, "Нечего прерывать.")
 
 
@@ -65,12 +66,13 @@ async def test_retry_resends_the_last_prompt(app, spy, fake_claude):
     fake_claude.text_turn("теперь получилось")
     await feed(app, text_update("сделай дело"))
     await wait_for_text(spy, "💥")
-    await feed(app, text_update("/retry"))
+    await feed(app, callback_update("retry:1"))
     await wait_for_text(spy, "теперь получилось")
     assert fake_claude.stdin_texts()[-1] == "сделай дело"
     assert await app.db.fetchval("SELECT count(*) FROM turns") == 2
 
 
 async def test_retry_without_turns_says_so(app, spy, fake_claude):
-    await feed(app, text_update("/retry"))
+    await feed(app, text_update("/status"))
+    await feed(app, callback_update("retry:1"))
     await wait_for_text(spy, "Нечего повторять")
