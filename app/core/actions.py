@@ -252,7 +252,7 @@ async def sessions_card(app, topic: dict, page: int = 0, message_id: int | None 
     for s in found:
         same = Path(s.cwd or "").resolve() == topic_dir
         rows.append((_folder_label(s.cwd, root), s.short, sessions.ago(s.mtime), s.title, await _where(app, topic, s.session_id)))
-        entries.append((s.session_id, same, folder_name(s.cwd or "?"), s.title))
+        entries.append((s.session_id, same, folder_name(s.cwd or "?"), sessions.ago(s.mtime)))
     text = texts.sessions_card(root, rows, outside, page, pages)
     kb = sessions_kb(topic["id"], entries, page, pages) if entries else None
     if message_id is not None:

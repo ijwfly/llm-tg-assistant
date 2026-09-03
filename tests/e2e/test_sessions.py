@@ -45,8 +45,7 @@ async def test_sessions_card_lists_the_whole_machine_own_folder_first(app, spy, 
     assert lines[3] == "▸ **other** · bbbbbbbb · только что · «в другом проекте»"
     assert lines[4] == f"ещё 1 вне `{settings.WORK_ROOT}` — бот туда не ходит"
     assert buttons(card) == [f"rs:1:{str(topic['session_id'])[:8]}", "rs:1:aaaaaaaa", "ns:1:bbbbbbbb", "hide:1"]
-    assert button_texts(card) == ["Продолжить здесь · мой вопрос из темы", "Продолжить здесь · Починить auth",
-                                  "Новая тема · other · в другом проекте", "Скрыть"]
+    assert button_texts(card) == ["work · 5 мин назад", "work · 10 мин назад", "other", "Скрыть"]   # folder, time only if repeated
 
 
 async def test_sessions_card_escapes_markdown_in_titles_and_cuts_long_labels(app, spy, fake_claude, tmp_path):
@@ -54,11 +53,13 @@ async def test_sessions_card_escapes_markdown_in_titles_and_cuts_long_labels(app
     other = tmp_path / "work" / "my_lib"
     other.mkdir()
     write_transcript(settings.CLAUDE_CONFIG_DIR, str(other), OTHER, ["x"], custom_title="fix *bold* and `code` " + "z" * 40)
+    long_dir = tmp_path / "work" / ("d" * 60)
+    long_dir.mkdir()
+    write_transcript(settings.CLAUDE_CONFIG_DIR, str(long_dir), TERM, ["y"])
     await run(app, callback_update("sessions:1"))
     card = spy.calls("SendRichMessage")[-1]
     assert "▸ **my\\_lib** · bbbbbbbb · только что · «fix \\*bold\\* and \\`code\\` zzz" in card_text(card)
-    label = button_texts(card)[0]
-    assert label.startswith("Новая тема · my_lib · fix *bold* and `code` zz") and label.endswith("…") and len(label) == 48
+    assert button_texts(card)[:2] == ["d" * 47 + "…", "my_lib"]
 
 
 async def test_sessions_card_pages_through_the_machine(app, spy, fake_claude, tmp_path):
