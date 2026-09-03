@@ -51,6 +51,15 @@ You need `claude` installed (`npm i -g @anthropic-ai/claude-code`) and logged in
 Tests: `bash scripts/test.sh` (starts its own Postgres in Docker); fully containerized:
 `bash scripts/test_docker.sh`.
 
+Without Docker at all (Postgres from Homebrew, `brew services start postgresql@16`): create a role `app`
+and databases `app` and `app_test`, put `DATABASE_URL = "postgresql://app:app@localhost:5432/app"` into
+`settings_local.py`, and run the tests with `TEST_DATABASE_URL=postgresql://app:app@localhost:5432/app_test
+.venv/bin/python -m pytest`. To keep the bot running on a Mac, a launchd agent in
+`~/Library/LaunchAgents/` with `ProgramArguments` = `.venv/bin/python -m app.main`, `WorkingDirectory` =
+the checkout, `KeepAlive`, `RunAtLoad`, and a `PATH` that includes the directory of `claude` does it:
+`launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/<label>.plist`; logs go where `StandardOutPath`
+points. Compose is the better fit on a Linux server.
+
 ## How to use it
 
 - **Topic = folder.** The first message in a topic starts a session in `DEFAULT_CWD`.
