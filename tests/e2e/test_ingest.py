@@ -58,10 +58,11 @@ async def test_text_photo_and_voice_within_the_window_form_one_turn_in_order(app
     await wait_for_text(spy, LONG.strip())
     blocks = stdin_contents(fake_claude)[0]
     texts = [b["text"] for b in blocks if b["type"] == "text"]
-    assert texts[0].startswith("сначала текст")
-    assert "[фото сохранено:" in texts[0]
-    assert "[голосовое:" in texts[-1]   # no TRANSCRIBE_CMD -> path only
-    assert fake_claude.stdin_texts()  # single message
+    # fixed order: transcripts (context) before texts/photos, regardless of arrival order
+    assert texts[0].startswith("[голосовое:")   # no TRANSCRIBE_CMD -> path only
+    assert "сначала текст" in texts[0] and "[фото сохранено:" in texts[0]
+    assert texts[0].index("сначала текст") < texts[0].index("[фото сохранено:")
+    assert len(fake_claude.stdin_texts()) == 1
 
 
 async def test_forward_without_question_is_staged_and_reacted(app, spy, fake_claude):
@@ -209,3 +210,14 @@ async def test_reply_quote_uses_the_batch_anchor(app, spy, fake_claude):
     await feed(app, message_update(text="и вот это"))
     await wait_for_text(spy, LONG.strip())
     assert fake_claude.stdin_texts() == ["[в ответ на твой ответ: «Мой ответ»]\n\nа это?\n\nи вот это"]
+
+
+async def test_forward_comment_sent_before_the_forwards_still_lands_after_them(app, spy, fake_claude):
+    """Telegram sends the comment of a forward before the forwarded messages themselves."""
+    fake_claude.text_turn(LONG)
+    await feed(app, message_update(text="о чём это?"))
+    await feed(app, message_update(text="первое", forward_from=user(5)))
+    await feed(app, message_update(text="второе", forward_from=user(5)))
+    await wait_for_text(spy, LONG.strip())
+    text = fake_claude.stdin_texts()[0]
+    assert text.endswith("о чём это?") and text.index("первое") < text.index("второе")

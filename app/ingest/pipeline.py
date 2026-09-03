@@ -153,7 +153,9 @@ class Ingest:
         for row in await self.app.store.staging.take_all(topic["id"]):
             parts.append(Item(kind=STAGING, group=row["order_group"], text=row["payload"].get("text", ""),
                               images=row["payload"].get("images", [])))
-        parts.extend(items)
+        # forwards → files → transcripts → texts, then by message id: context lands before the question
+        # even when Telegram delivers a forward's comment first
+        parts.extend(sorted(items, key=lambda i: (i.group, i.message_id or 0)))
         blocks: list[dict] = []
         text_acc: list[str] = []
         quote = reply_quote(anchor, self.app.bot.id)
