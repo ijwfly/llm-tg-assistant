@@ -7,6 +7,8 @@ All notable changes to this project are documented here. The format follows
 
 ### Changed
 
+- **`/soul` is hidden**: removed from the «/» menu and the help text (the persona is normally
+  `SOUL_PATH` from the config); the command itself still works as a text fallback.
 - **Default permission mode is `auto`.** New topics start with Claude Code's own classifier
   (`--permission-mode auto`, prompt tool still attached for disputed calls) instead of `prompt`, which
   shows a card for every action. Existing topics keep the mode stored in their row; the card's «Права»
@@ -17,6 +19,9 @@ All notable changes to this project are documented here. The format follows
   pins a name it follows the folder when the topic moves. See `specs/PROJECT_SPEC.md` §4.2.
 
 ### Added
+
+- **`/plan` and `/auto` commands** switch the topic's permission mode in one go (the frequent
+  cases); the other modes stay on the card's «Права» button. See `specs/PROJECT_SPEC.md` §4.3.
 
 - **Paged sessions card.** The «Sessions» list shows `SESSIONS_PAGE_SIZE` (8) rows per page with
   «Назад» / «Дальше» buttons that redraw the card in place, a page counter in the header and a

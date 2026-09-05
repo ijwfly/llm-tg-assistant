@@ -24,7 +24,7 @@ Human-facing setup and operations: `README.md`.
 | `app/main.py` | entry point: validate settings, connect DB, migrate, polling |
 | `app/app.py` | `App`: wires store, sender, outbox worker, topics, dispatcher; start/stop notices |
 | `app/store/db.py`, `repos.py`, `migrations/` | asyncpg pool, idempotent `NNNN_*.sql` migrations (applied by the DB container init **and** at app start), repositories |
-| `app/transport/bot.py` | dispatcher wiring, `ALLOWED_UPDATES`, command menu (`BOT_COMMANDS`: the 8 commands that need an argument or have no button; everything else is a button — a test checks the menu matches the router) |
+| `app/transport/bot.py` | dispatcher wiring, `ALLOWED_UPDATES`, command menu (`BOT_COMMANDS`: the 9 commands that need an argument, have no button or are frequent switches (`/plan`, `/auto`); everything else is a button; `/soul` is registered but hidden — a test checks the menu matches the router) |
 | `app/transport/middleware.py` | `AccessMiddleware` (ALLOWED_USERS/ALLOWED_CHATS, silent), `DedupMiddleware` (update_id, marked before handling) |
 | `app/transport/handlers.py` | commands and messages; `build_router()` per dispatcher; `topic_ref()` maps a message to `(chat_id, thread_id)` |
 | `app/transport/sender.py`, `outbox.py` | the only door for outgoing calls: rows in `outbox`, worker delivers per-topic in order, parallel across topics, 429/backoff/failed |

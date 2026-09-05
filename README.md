@@ -84,8 +84,9 @@ points. Compose is the better fit on a Linux server.
 - **Media.** The model sees photos as images; documents and voice notes are saved to the inbox and
   passed as paths; voice is transcribed through `TRANSCRIBE_CMD`. Forwards and files without a caption
   are staged (👀 reaction) and go along with the next question.
-- **Commands** (all in the «/» menu): `/status`, `/new`, `/project`, `/rename`, `/soul`, `/files`,
-  `/usage`, `/help`. Any other `/command` (`/compact`, `/cost`, `/context`, skills) goes to Claude Code as is.
+- **Commands** (all in the «/» menu): `/status`, `/new`, `/project`, `/rename`, `/plan`, `/auto`,
+  `/files`, `/usage`, `/help`. `/plan` and `/auto` switch the topic's permission mode in one go; the
+  other modes are on the card. `/soul [path|off|default]` (per-topic persona) works but is hidden. Any other `/command` (`/compact`, `/cost`, `/context`, skills) goes to Claude Code as is.
 
 The bot speaks Russian in the chat (`app/transport/texts.py` holds every string).
 
