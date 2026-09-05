@@ -118,5 +118,5 @@ def test_command_menu_lists_every_bridge_command():
             registered |= {c if isinstance(c, str) else c.pattern for c in getattr(f.callback, "commands", ())}
     menu = [c.command for c in BOT_COMMANDS]
     assert len(menu) == len(set(menu))
-    assert set(menu) == registered - {"start", "clear"}     # aliases stay out of the menu
+    assert set(menu) == registered - {"start", "clear", "soul"}     # aliases and the hidden /soul stay out of the menu
     assert all(len(c.description) <= 256 for c in BOT_COMMANDS)

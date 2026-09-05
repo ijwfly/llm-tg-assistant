@@ -93,7 +93,16 @@ async def cmd_rename(message: Message, command: CommandObject, app) -> None:
 
 
 async def cmd_soul(message: Message, command: CommandObject, app) -> None:
+    """Hidden (not in the menu): the persona is normally SOUL_PATH from the config."""
     await actions.set_soul(app, await _topic(app, message), command.args or "")
+
+
+async def cmd_plan(message: Message, app) -> None:
+    await actions.set_permission_mode(app, await _topic(app, message), "plan")
+
+
+async def cmd_auto(message: Message, app) -> None:
+    await actions.set_permission_mode(app, await _topic(app, message), "auto")
 
 
 async def cmd_files(message: Message, app) -> None:
@@ -142,6 +151,8 @@ def build_router() -> Router:
     router.message.register(cmd_project, Command("project"))
     router.message.register(cmd_rename, Command("rename"))
     router.message.register(cmd_soul, Command("soul"))
+    router.message.register(cmd_plan, Command("plan"))
+    router.message.register(cmd_auto, Command("auto"))
     router.message.register(cmd_files, Command("files"))
     router.message.register(cmd_usage, Command("usage"))
     router.message.register(any_message, CONTENT_FILTER)

@@ -155,3 +155,23 @@ async def test_new_topics_start_in_the_configured_default_mode(app, spy, fake_cl
         assert texts.perm_info(None).splitlines()[4] == "← auto"                                        # unset topic → default
     finally:
         settings.DEFAULT_PERMISSION_MODE = "prompt"
+
+
+async def test_plan_and_auto_commands_switch_the_mode_for_the_next_spawn(app, spy, fake_claude):
+    fake_claude.text_turn(LONG)
+    await feed(app, text_update("первый"))
+    await wait_turn_finished(app)
+    await run(app, text_update("/plan"))
+    assert spy.last_text() == "🔐 Права: plan. Процесс перезапустится на следующем ходе, контекст остаётся."
+    assert (await app.topics.list_all())[0]["permission_mode"] == "plan"
+    fake_claude.text_turn(LONG)
+    await feed(app, text_update("второй"))
+    await wait_turn_finished(app, after=1)
+    assert argv_value(fake_claude.argv_calls()[-1], "--permission-mode") == "plan"
+    await run(app, text_update("/auto"))
+    assert (await app.topics.list_all())[0]["permission_mode"] == "auto"
+    fake_claude.text_turn(LONG)
+    await feed(app, text_update("третий"))
+    await wait_turn_finished(app, after=2)
+    argv = fake_claude.argv_calls()[-1]
+    assert argv_value(argv, "--permission-mode") == "auto" and "--permission-prompt-tool" in argv
